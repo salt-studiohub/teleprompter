@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Teleprompter — Operator & Prompter (Save/Load + Top Toolbar)</title>
+<title>Teleprompter — Operator & Prompter</title>
 <style>
   :root{
     --fontSize: 64px;
@@ -150,7 +150,7 @@
 <style>:root{--fontSize:${state.fontSize}px;--padLRvw:${state.padLR};--padTBvh:${state.padTB};--guideY:${state.guidePos}%}html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}.viewer{position:relative;height:100%;overflow:auto}.content{font-size:var(--fontSize);line-height:1.2;padding:calc(var(--padTBvh)*1vh) calc(var(--padLRvw)*1vw);white-space:pre-wrap;word-break:break-word}.guide{position:sticky;top:var(--guideY);height:2px;background:#f44336;opacity:.8}.mirrorX{transform:scaleX(-1)}.flipY{transform:scaleY(-1)}</style>
 </head><body>
   <div class="viewer" id="v"><div class="guide" id="g"></div><div class="content" id="c"></div></div>
-<script>(function(){const viewer=document.getElementById('v');const content=document.getElementById('c');const guide=document.getElementById('g');let state={text:'',fontSize:64,padLR:8,padTB:0,guidePos:35,guideVisible:true,speed:80,autoscroll:false,invertH:false,invertV:false,scrollTop:0};let autosTimer=null,isRemoteScroll=false;function apply(){content.textContent=state.text||'';document.documentElement.style.setProperty('--fontSize',state.fontSize+'px');document.documentElement.style.setProperty('--padLRvw',state.padLR);document.documentElement.style.setProperty('--padTBvh',state.padTB);document.documentElement.style.setProperty('--guideY',state.guidePos+'%');guide.style.display=state.guideVisible?'block':'none';content.classList.toggle('mirrorX',!!state.invertH);content.classList.toggle('flipY',!!state.invertV);isRemoteScroll=true;viewer.scrollTop=state.scrollTop||0;isRemoteScroll=false;if(autosTimer){cancelAnimationFrame(autosTimer);autosTimer=null;}if(state.autoscroll){step();}}function step(){const sp=state.speed||0;let last=performance.now();function tick(t){const dt=(t-last)/1000;last=t;viewer.scrollTop+=sp*dt;window.parent&&window.parent.postMessage({type:'scroll',scrollTop:viewer.scrollTop},'*');autosTimer=requestAnimationFrame(tick);}autosTimer=requestAnimationFrame(tick);}window.addEventListener('message',e=>{const d=e.data||{};if(d.type==='ping'){window.parent&&window.parent.postMessage({type:'pong'},'*');}else if(d.type==='state'){state=d.state||state;apply();}else if(d.type==='scroll'){isRemoteScroll=true;viewer.scrollTop=d.scrollTop||0;isRemoteScroll=false;}});viewer.addEventListener('scroll',()=>{if(isRemoteScroll)return;state.scrollTop=viewer.scrollTop;window.parent&&window.parent.postMessage({type:'scroll',scrollTop:state.scrollTop},'*');},{passive:true});window.parent&&window.parent.postMessage({type:'ready'},'*');})();<\/script>
+<script>(function(){const viewer=document.getElementById('v');const content=document.getElementById('c');const guide=document.getElementById('g');let state={text:'',fontSize:64,padLR:8,padTB:0,guidePos:35,guideVisible:true,speed:80,autoscroll:false,invertH:false,invertV:false,scrollTop:0};let autosTimer=null,isRemoteScroll=false;function apply(){content.textContent=state.text||'';document.documentElement.style.setProperty('--fontSize',state.fontSize+'px');document.documentElement.style.setProperty('--padLRvw',state.padLR);document.documentElement.style.setProperty('--padTBvh',state.padTB);document.documentElement.style.setProperty('--guideY',state.guidePos+'%');guide.style.display=state.guideVisible?'block':'none';content.classList.toggle('mirrorX',!!state.invertH);content.classList.toggle('flipY',!!state.invertV);isRemoteScroll=true;viewer.scrollTop=state.scrollTop||0;isRemoteScroll=false;if(autosTimer){cancelAnimationFrame(autosTimer);autosTimer=null;}if(state.autoscroll){step();}}function step(){const sp=state.speed||0;let last=performance.now();function tick(t){const dt=(t-last)/1000;last=t;viewer.scrollTop+=sp*dt;(window.opener||window.parent).postMessage({type:'scroll',scrollTop:viewer.scrollTop},'*');autosTimer=requestAnimationFrame(tick);}autosTimer=requestAnimationFrame(tick);}window.addEventListener('message',e=>{const d=e.data||{};if(d.type==='ping'){(window.opener||window.parent).postMessage({type:'pong'},'*');}else if(d.type==='state'){state=d.state||state;apply();}else if(d.type==='scroll'){isRemoteScroll=true;viewer.scrollTop=d.scrollTop||0;isRemoteScroll=false;}});viewer.addEventListener('scroll',()=>{if(isRemoteScroll)return;state.scrollTop=viewer.scrollTop;(window.opener||window.parent).postMessage({type:'scroll',scrollTop:state.scrollTop},'*');},{passive:true});(window.opener||window.parent).postMessage({type:'ready'},'*');})();<\/script>
 </body></html>`; }
   function openPrompter(){
     status.textContent='Opening prompter…';
@@ -175,6 +175,8 @@
   viewer.addEventListener('scroll', ()=>{ if(isRemoteScroll) return; state.scrollTop=viewer.scrollTop; send({type:'scroll',scrollTop:state.scrollTop}); }, {passive:true});
   function scrollBy(amount){ viewer.scrollTop=Math.max(0, viewer.scrollTop+amount); }
   document.addEventListener('keydown', (e)=>{
+    const t=e.target, tag=(t&&t.tagName||'').toLowerCase();
+    if(tag==='textarea'||tag==='select'||(tag==='input'&&t.type!=='checkbox'&&t.type!=='range')||tag==='button'||e.ctrlKey||e.metaKey||e.altKey||(t&&t.closest&&t.closest('dialog'))) return;
     if(['ArrowUp','ArrowDown',' ','Spacebar','g','G'].includes(e.key)) e.preventDefault();
     if(e.key==='ArrowUp') scrollBy(-60);
     else if(e.key==='ArrowDown' || e.key==='Down') scrollBy(60);
@@ -229,13 +231,15 @@ Press Space to toggle autoscroll. Use ↑/↓ to nudge.`;
   const statusEl  = document.getElementById('status');
   const setStatus = (m)=>{ if(statusEl) statusEl.textContent = m; };
 
+  const esc = (v)=>String(v).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
   async function doSave(){
     const text = scriptBox?.value || '';
     const name = prompt('Enter a name for this script:');
     if (!name) return;
     try{
       await addDoc(collection(db, 'scripts'), {
-        name, text, owner: uid || null, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+        name, text, owner: auth.currentUser?.uid || null, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
       });
       setStatus?.(`Saved “${name}”.`);
     }catch(err){ console.error(err); alert('Save failed. See console for details.'); }
@@ -246,18 +250,25 @@ Press Space to toggle autoscroll. Use ↑/↓ to nudge.`;
     listEl.innerHTML = '<div class="muted">Loading…</div>';
     try{
       let qRef = collection(db,'scripts');
-      qRef = uid ? query(qRef, where('owner','==',uid), orderBy('updatedAt','desc'))
-                 : query(qRef, orderBy('updatedAt','desc'));
-      const snap = await getDocs(qRef);
+      const me = auth.currentUser?.uid;
+      let snap;
+      if (me){
+        // Filter client-side sort to avoid needing a composite Firestore index
+        snap = await getDocs(query(qRef, where('owner','==',me)));
+      } else {
+        snap = await getDocs(query(qRef, orderBy('updatedAt','desc')));
+      }
       if (snap.empty){ listEl.innerHTML = '<div class="muted">No saved scripts yet.</div>'; return; }
       listEl.innerHTML = '';
-      snap.forEach(docSnap=>{
+      const docs = []; snap.forEach(d=>docs.push(d));
+      docs.sort((a,b)=>(b.data().updatedAt?.seconds||0)-(a.data().updatedAt?.seconds||0));
+      docs.forEach(docSnap=>{
         const d = docSnap.data();
         const div = document.createElement('div');
         div.className = 'saved-item';
         const when = d.updatedAt?.toDate ? d.updatedAt.toDate().toLocaleString() : '';
         div.innerHTML = `
-          <div><div class="saved-title">${d.name || '(untitled)'}</div><div class="saved-meta">${when}</div></div>
+          <div><div class="saved-title">${esc(d.name || '(untitled)')}</div><div class="saved-meta">${when}</div></div>
           <div class="saved-actions">
             <button data-id="${docSnap.id}" class="load">Load</button>
             <button data-id="${docSnap.id}" class="delete">Delete</button>
