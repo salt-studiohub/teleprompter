@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Teleprompter — Operator & Prompter (Save/Load + Top Toolbar)</title>
+<style>
+  :root{
+    --fontSize: 64px;
+    --padLRvw: 8;
+    --padTBvh: 0;
+    --guideY: 35%;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  body{display:flex;flex-direction:column;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:10;background:#0e0e0e;border-bottom:1px solid #222}
+  .topbar-inner{max-width:1400px;margin:0 auto;padding:12px 16px;display:grid;grid-template-columns:1fr auto;gap:12px}
+  .controls{display:grid;grid-template-columns:repeat(4, minmax(220px, 1fr));gap:10px 16px;align-items:center}
+  .controls label{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:14px;background:#0b0b0b;border:1px solid #222;border-radius:12px;padding:8px 10px}
+  .controls input[type="range"]{width:180px}
+  .muted{opacity:.75;font-size:12px}
+  .actions{display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+  .actions .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+  .toggles{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+  .toggle{display:flex;gap:10px;align-items:center;background:#0b0b0b;border:1px solid #222;border-radius:999px;padding:8px 12px;font-size:14px}
+  .toggle input{margin:0}
+  button{background:#1f1f1f;color:#fff;border:1px solid #333;border-radius:12px;padding:10px 14px;cursor:pointer}
+  button:hover{background:#262626}
+  .script-wrap{max-width:1400px;margin:0 auto;padding:0 16px 10px}
+  .script-wrap label{display:block;margin:6px 0 6px;font-size:12px;opacity:.9}
+  textarea{height:120px;width:100%;resize:vertical;background:#0a0a0a;color:#fff;border:1px solid #222;border-radius:10px;padding:10px}
+  .viewer{position:relative;overflow:auto;flex:1;border-top:1px solid #222}
+  .content{font-size:var(--fontSize);line-height:1.2; padding:calc(var(--padTBvh)*1vh) calc(var(--padLRvw)*1vw); white-space:pre-wrap;word-break:break-word}
+  .guide{position:absolute;left:0;right:0;height:2px;background:#f44336;top:var(--guideY);opacity:.8;pointer-events:none}
+  .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;background:#111;border:1px solid #333;border-radius:6px;padding:2px 6px}
+  .mirrorX{transform:scaleX(-1)}
+  .flipY{transform:scaleY(-1)}
+  .viewer:focus{outline:2px solid #2a7fff}
+  dialog#loadDialog{border:1px solid #333;background:#0f0f0f;color:#fff;border-radius:16px;padding:0;max-width:640px;width:90%}
+  .dlg-head{padding:14px 16px;border-bottom:1px solid #222;display:flex;align-items:center;justify-content:space-between}
+  .dlg-body{padding:10px 16px;max-height:60vh;overflow:auto}
+  .dlg-foot{padding:12px 16px;border-top:1px solid #222;display:flex;justify-content:flex-end}
+  .saved-item{display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center;border:1px solid #222;border-radius:12px;padding:10px;margin:8px 0;background:#0b0b0b}
+  .saved-title{font-weight:600}
+  .saved-meta{font-size:12px;opacity:.8}
+  .saved-actions{display:flex;gap:8px}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div>
+        <h2 style="margin:0 0 6px">Operator</h2>
+        <div class="muted">Preview below exactly matches Prompter — operator is always unflipped for readability.</div>
+      </div>
+      <div class="actions">
+        <div class="row">
+          <button id="openPrompter">Open Prompter Window</button>
+          <span class="muted">Keys: <span class="kbd">Space</span> autoscroll, <span class="kbd">↑/↓</span> nudge, <span class="kbd">G</span> guide</span>
+        </div>
+        <div class="toggles">
+          <label class="toggle"><input id="showGuide" type="checkbox" checked> Show Guide</label>
+          <label class="toggle"><input id="autoscroll" type="checkbox"> Autoscroll</label>
+          <label class="toggle"><input id="invertH" type="checkbox"> Mirror (Prompter only)</label>
+          <label class="toggle"><input id="invertV" type="checkbox"> Flip (Prompter only)</label>
+        </div>
+      </div>
+    </div>
+    <div class="topbar-inner" style="grid-template-columns:1fr;gap:10px 16px;">
+      <div class="controls" id="controls">
+        <label>Font Size <span style="display:flex;gap:10px;align-items:center"><input id="fontSize" type="range" min="20" max="160" value="64"><span id="fontSizeVal">64px</span></span></label>
+        <label>Side Margin <span style="display:flex;gap:10px;align-items:center"><input id="padLR" type="range" min="0" max="20" step="1" value="8"><span id="padLRVal">8vw</span></span></label>
+        <label>Guide Position <span style="display:flex;gap:10px;align-items:center"><input id="guidePos" type="range" min="5" max="90" value="35"><span id="guideVal">35%</span></span></label>
+        <label>Speed <span style="display:flex;gap:10px;align-items:center"><input id="speed" type="range" min="10" max="300" step="5" value="80"><span id="speedVal">80 px/s</span></span></label>
+      </div>
+    </div>
+    <div class="script-wrap">
+      <label>Script</label>
+      <textarea id="script" placeholder="Type or paste your script here..."></textarea>
+      <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;margin-top:6px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button id="applyScript">Load to Preview & Prompter</button>
+          <button id="saveScript" title="Save script to Firebase">Save</button>
+          <button id="loadScript" title="Load a saved script">Load</button>
+        </div>
+        <span id="status" class="muted">–</span>
+      </div>
+    </div>
+  </div>
+  <div class="viewer" id="viewer" tabindex="0" aria-label="Operator preview (scroll area)">
+    <div class="guide" id="guide"></div>
+    <div class="content" id="content"></div>
+  </div>
+  <dialog id="loadDialog">
+    <div class="dlg-head">
+      <strong>Saved Scripts</strong>
+      <button id="closeDialog">Close</button>
+    </div>
+    <div class="dlg-body">
+      <div id="savedList" class="saved-list"></div>
+    </div>
+    <div class="dlg-foot">
+      <span class="muted">Click “Load” to replace the current script.</span>
+    </div>
+  </dialog>
+
+<script>
+(function(){
+  const state = { text:'', fontSize:64, padLR:8, padTB:0, guidePos:35, guideVisible:true, speed:80, autoscroll:false, invertH:false, invertV:false, scrollTop:0 };
+  const viewer = document.getElementById('viewer');
+  const content = document.getElementById('content');
+  const guide = document.getElementById('guide');
+  const scriptBox = document.getElementById('script');
+  const status = document.getElementById('status');
+  const fontSize = document.getElementById('fontSize'), fontSizeVal = document.getElementById('fontSizeVal');
+  const padLR = document.getElementById('padLR'), padLRVal = document.getElementById('padLRVal');
+  const guidePos = document.getElementById('guidePos'), guideVal = document.getElementById('guideVal');
+  const speed = document.getElementById('speed'), speedVal = document.getElementById('speedVal');
+  const showGuide = document.getElementById('showGuide');
+  const autoscroll = document.getElementById('autoscroll');
+  const invertH = document.getElementById('invertH');
+  const invertV = document.getElementById('invertV');
+  const openBtn = document.getElementById('openPrompter');
+  const applyBtn = document.getElementById('applyScript');
+  let prompterWin = null, pingTimer = null, autosTimer = null, isRemoteScroll = false;
+
+  function stopOpAuto(){ if(autosTimer){ cancelAnimationFrame(autosTimer); autosTimer=null; } }
+  function stepOp(){ const sp = state.speed||0; let last = performance.now(); function tick(t){ const dt=(t-last)/1000; last=t; viewer.scrollTop += sp*dt; state.scrollTop = viewer.scrollTop; send({type:'scroll',scrollTop:state.scrollTop}); autosTimer=requestAnimationFrame(tick);} autosTimer=requestAnimationFrame(tick); }
+  function manageAuto(){ stopOpAuto(); if(state.autoscroll && (!prompterWin || prompterWin.closed)){ stepOp(); } }
+  function render(){
+    content.textContent = state.text||'';
+    document.documentElement.style.setProperty('--fontSize', state.fontSize+'px');
+    document.documentElement.style.setProperty('--padLRvw', state.padLR);
+    document.documentElement.style.setProperty('--padTBvh', state.padTB);
+    document.documentElement.style.setProperty('--guideY', state.guidePos+'%');
+    guide.style.display = state.guideVisible ? 'block' : 'none';
+    content.classList.remove('mirrorX','flipY');
+    isRemoteScroll = true; viewer.scrollTop = state.scrollTop||0; isRemoteScroll=false;
+    fontSize.value=state.fontSize; fontSizeVal.textContent=state.fontSize+'px';
+    padLR.value=state.padLR; padLRVal.textContent=state.padLR+'vw';
+    guidePos.value=state.guidePos; guideVal.textContent=state.guidePos+'%';
+    speed.value=state.speed; speedVal.textContent=state.speed+' px/s';
+    showGuide.checked=state.guideVisible; autoscroll.checked=state.autoscroll; invertH.checked=state.invertH; invertV.checked=state.invertV;
+  }
+  function send(msg){ if(prompterWin && !prompterWin.closed){ prompterWin.postMessage(msg,'*'); } }
+  function broadcastState(){ send({type:'state', state}); }
+  function prompterHTML(){ return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Prompter</title>
+<style>:root{--fontSize:${state.fontSize}px;--padLRvw:${state.padLR};--padTBvh:${state.padTB};--guideY:${state.guidePos}%}html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}.viewer{position:relative;height:100%;overflow:auto}.content{font-size:var(--fontSize);line-height:1.2;padding:calc(var(--padTBvh)*1vh) calc(var(--padLRvw)*1vw);white-space:pre-wrap;word-break:break-word}.guide{position:sticky;top:var(--guideY);height:2px;background:#f44336;opacity:.8}.mirrorX{transform:scaleX(-1)}.flipY{transform:scaleY(-1)}</style>
+</head><body>
+  <div class="viewer" id="v"><div class="guide" id="g"></div><div class="content" id="c"></div></div>
+<script>(function(){const viewer=document.getElementById('v');const content=document.getElementById('c');const guide=document.getElementById('g');let state={text:'',fontSize:64,padLR:8,padTB:0,guidePos:35,guideVisible:true,speed:80,autoscroll:false,invertH:false,invertV:false,scrollTop:0};let autosTimer=null,isRemoteScroll=false;function apply(){content.textContent=state.text||'';document.documentElement.style.setProperty('--fontSize',state.fontSize+'px');document.documentElement.style.setProperty('--padLRvw',state.padLR);document.documentElement.style.setProperty('--padTBvh',state.padTB);document.documentElement.style.setProperty('--guideY',state.guidePos+'%');guide.style.display=state.guideVisible?'block':'none';content.classList.toggle('mirrorX',!!state.invertH);content.classList.toggle('flipY',!!state.invertV);isRemoteScroll=true;viewer.scrollTop=state.scrollTop||0;isRemoteScroll=false;if(autosTimer){cancelAnimationFrame(autosTimer);autosTimer=null;}if(state.autoscroll){step();}}function step(){const sp=state.speed||0;let last=performance.now();function tick(t){const dt=(t-last)/1000;last=t;viewer.scrollTop+=sp*dt;window.parent&&window.parent.postMessage({type:'scroll',scrollTop:viewer.scrollTop},'*');autosTimer=requestAnimationFrame(tick);}autosTimer=requestAnimationFrame(tick);}window.addEventListener('message',e=>{const d=e.data||{};if(d.type==='ping'){window.parent&&window.parent.postMessage({type:'pong'},'*');}else if(d.type==='state'){state=d.state||state;apply();}else if(d.type==='scroll'){isRemoteScroll=true;viewer.scrollTop=d.scrollTop||0;isRemoteScroll=false;}});viewer.addEventListener('scroll',()=>{if(isRemoteScroll)return;state.scrollTop=viewer.scrollTop;window.parent&&window.parent.postMessage({type:'scroll',scrollTop:state.scrollTop},'*');},{passive:true});window.parent&&window.parent.postMessage({type:'ready'},'*');})();<\/script>
+</body></html>`; }
+  function openPrompter(){
+    status.textContent='Opening prompter…';
+    if(prompterWin && !prompterWin.closed){ try{prompterWin.close();}catch{} }
+    prompterWin=window.open('','TeleprompterWindow','popup=yes,width=1200,height=800');
+    if(!prompterWin){ alert('Pop-up blocked. Please allow pop-ups for this site.'); status.textContent='Popup blocked.'; return; }
+    prompterWin.document.open(); prompterWin.document.write(prompterHTML()); prompterWin.document.close();
+    if(pingTimer) clearInterval(pingTimer);
+    pingTimer=setInterval(()=>{ try{ if(prompterWin && !prompterWin.closed) prompterWin.postMessage({type:'ping'},'*'); }catch{} },500);
+    setTimeout(()=>{ broadcastState(); status.textContent='Prompter ready.'; manageAuto(); },300);
+  }
+  openBtn.addEventListener('click', openPrompter);
+  applyBtn.addEventListener('click', ()=>{ state.text=scriptBox.value; render(); broadcastState(); });
+  fontSize.addEventListener('input', ()=>{ state.fontSize=+fontSize.value; render(); broadcastState(); });
+  padLR.addEventListener('input', ()=>{ state.padLR=+padLR.value; render(); broadcastState(); });
+  guidePos.addEventListener('input', ()=>{ state.guidePos=+guidePos.value; render(); broadcastState(); });
+  speed.addEventListener('input', ()=>{ state.speed=+speed.value; render(); broadcastState(); manageAuto(); });
+  showGuide.addEventListener('change', ()=>{ state.guideVisible=showGuide.checked; render(); broadcastState(); });
+  autoscroll.addEventListener('change', ()=>{ state.autoscroll=autoscroll.checked; render(); broadcastState(); manageAuto(); });
+  invertH.addEventListener('change', ()=>{ state.invertH=invertH.checked; render(); broadcastState(); });
+  invertV.addEventListener('change', ()=>{ state.invertV=invertV.checked; render(); broadcastState(); });
+  viewer.addEventListener('scroll', ()=>{ if(isRemoteScroll) return; state.scrollTop=viewer.scrollTop; send({type:'scroll',scrollTop:state.scrollTop}); }, {passive:true});
+  function scrollBy(amount){ viewer.scrollTop=Math.max(0, viewer.scrollTop+amount); }
+  document.addEventListener('keydown', (e)=>{
+    if(['ArrowUp','ArrowDown',' ','Spacebar','g','G'].includes(e.key)) e.preventDefault();
+    if(e.key==='ArrowUp') scrollBy(-60);
+    else if(e.key==='ArrowDown' || e.key==='Down') scrollBy(60);
+    else if(e.key===' ' || e.key==='Spacebar'){ autoscroll.checked=!autoscroll.checked; state.autoscroll=autoscroll.checked; render(); broadcastState(); manageAuto(); }
+    else if(e.key==='g' || e.key==='G'){ showGuide.checked=!showGuide.checked; state.guideVisible=showGuide.checked; render(); broadcastState(); }
+  });
+  window.addEventListener('message', (e)=>{
+    const d=e.data||{};
+    if(d.type==='pong'){ if(pingTimer){ clearInterval(pingTimer); pingTimer=null; } status.textContent='Connected to prompter'; manageAuto(); }
+    else if(d.type==='scroll'){ isRemoteScroll=true; viewer.scrollTop=d.scrollTop||0; isRemoteScroll=false; state.scrollTop=viewer.scrollTop; }
+    else if(d.type==='ready'){ broadcastState(); manageAuto(); }
+  });
+  state.text=`THIS IS A SAMPLE TELEPROMPTER SCRIPT
+
+Use the controls to adjust font size, margins, speed, and guide.
+Open the prompter window and drag it to your second display.
+
+Press Space to toggle autoscroll. Use ↑/↓ to nudge.`;
+  render(); manageAuto();
+})();
+</script>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
+  import { getFirestore, collection, addDoc, getDocs, getDoc, doc, deleteDoc, serverTimestamp, query, orderBy, where } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyALVu4YBscEBpIGn0N__x6HdT4yHbWbi3Q",
+    authDomain: "teleprompter-1234b.firebaseapp.com",
+    projectId: "teleprompter-1234b",
+    storageBucket: "teleprompter-1234b.firebasestorage.app",
+    messagingSenderId: "63079515130",
+    appId: "1:63079515130:web:13d51e6f8aa62c4c0ada43"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db   = getFirestore(app);
+
+  await signInAnonymously(auth).catch(console.error);
+  let uid = null;
+  onAuthStateChanged(auth, (user)=>{ uid = user?.uid || null; });
+
+  const saveBtn   = document.getElementById('saveScript');
+  const loadBtn   = document.getElementById('loadScript');
+  const applyBtn  = document.getElementById('applyScript');
+  const scriptBox = document.getElementById('script');
+  const dlg       = document.getElementById('loadDialog');
+  const listEl    = document.getElementById('savedList');
+  const closeDlg  = document.getElementById('closeDialog');
+  const statusEl  = document.getElementById('status');
+  const setStatus = (m)=>{ if(statusEl) statusEl.textContent = m; };
+
+  async function doSave(){
+    const text = scriptBox?.value || '';
+    const name = prompt('Enter a name for this script:');
+    if (!name) return;
+    try{
+      await addDoc(collection(db, 'scripts'), {
+        name, text, owner: uid || null, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+      });
+      setStatus?.(`Saved “${name}”.`);
+    }catch(err){ console.error(err); alert('Save failed. See console for details.'); }
+  }
+
+  async function showList(){
+    dlg.showModal();
+    listEl.innerHTML = '<div class="muted">Loading…</div>';
+    try{
+      let qRef = collection(db,'scripts');
+      qRef = uid ? query(qRef, where('owner','==',uid), orderBy('updatedAt','desc'))
+                 : query(qRef, orderBy('updatedAt','desc'));
+      const snap = await getDocs(qRef);
+      if (snap.empty){ listEl.innerHTML = '<div class="muted">No saved scripts yet.</div>'; return; }
+      listEl.innerHTML = '';
+      snap.forEach(docSnap=>{
+        const d = docSnap.data();
+        const div = document.createElement('div');
+        div.className = 'saved-item';
+        const when = d.updatedAt?.toDate ? d.updatedAt.toDate().toLocaleString() : '';
+        div.innerHTML = `
+          <div><div class="saved-title">${d.name || '(untitled)'}</div><div class="saved-meta">${when}</div></div>
+          <div class="saved-actions">
+            <button data-id="${docSnap.id}" class="load">Load</button>
+            <button data-id="${docSnap.id}" class="delete">Delete</button>
+          </div>`;
+        listEl.appendChild(div);
+      });
+    }catch(err){ console.error(err); listEl.innerHTML = '<div class="muted">Failed to load list.</div>'; }
+  }
+
+  listEl?.addEventListener('click', async (e)=>{
+    const id = e.target?.dataset?.id; if(!id) return;
+    if(e.target.classList.contains('load')){
+      try{
+        const d = await getDoc(doc(db,'scripts',id));
+        if (d.exists()){
+          const data = d.data();
+          if (scriptBox) scriptBox.value = data.text || '';
+          applyBtn?.click(); setStatus?.(`Loaded “${data.name || '(untitled)'}”.`); dlg.close();
+        }
+      }catch(err){ console.error(err); alert('Load failed.'); }
+    }
+    if(e.target.classList.contains('delete')){
+      if(!confirm('Delete this saved script?')) return;
+      try{ await deleteDoc(doc(db,'scripts',id)); showList(); }catch(err){ console.error(err); alert('Delete failed.'); }
+    }
+  });
+
+  saveBtn?.addEventListener('click', doSave);
+  loadBtn?.addEventListener('click', showList);
+  closeDlg?.addEventListener('click', ()=>dlg.close());
+</script>
+</body>
+</html>
