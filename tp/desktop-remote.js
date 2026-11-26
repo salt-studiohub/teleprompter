@@ -8,6 +8,7 @@ import { esc, MAX_TEXT, positionAt } from './core.js';
 const H = window.tpHost;                 // provided by index.html
 const S = H.state;
 const $ = (id)=>document.getElementById(id);
+const ico = (n)=>`<svg class="ico" aria-hidden="true"><use href="#i-${n}"/></svg>`;
 const notify = (m)=>{ const el = $('status'); if (el) el.textContent = m; };
 
 // ---------- what we have already written to the session ----------
@@ -86,7 +87,7 @@ function renderChip(){
   if (!sess.active){ chip.hidden = true; return; }
   chip.hidden = false;
   const off = sess.offline(), ok = sess.displayConnected();
-  chip.textContent = off ? `⚠ ${sess.fmt()} · OFFLINE — presenter will hold its position` : `📱 ${sess.fmt()} · ${ok ? 'presenter connected' : 'waiting for presenter'}`;
+  chip.innerHTML = off ? `${ico('warn')} ${sess.fmt()} · OFFLINE — presenter will hold its position` : `${ico('phone')} ${sess.fmt()} · ${ok ? 'presenter connected' : 'waiting for presenter'}`;
   chip.classList.toggle('live', ok && !off); chip.classList.toggle('warn', off);
 }
 setInterval(()=>{ renderChip(); if ($('presenterDialog').open && sess.active) renderDialog(); }, 2000);
@@ -101,8 +102,8 @@ function renderDialog(){
     let last = 'local'; try{ last = localStorage.getItem('tp_pd_choice') || 'local'; }catch{}
     body.innerHTML = `<p class="muted" style="margin:2px 0 12px;font-size:14px;line-height:1.5">Where will the presenter window be?</p>
       <div style="display:flex;flex-direction:column;gap:10px">
-        <button class="pd-choice" id="pdLocal"><b>🖥 On this computer</b><br><span class="muted">Opens a window you can drag to a second monitor.</span></button>
-        <button class="pd-choice" id="pdRemote"><b>📱 On a tablet or phone</b><br><span class="muted">Shows a QR code. Works over the internet — the devices don't need to be on the same network.</span></button>
+        <button class="pd-choice" id="pdLocal"><b>${ico('monitor')} On this computer</b><br><span class="muted">Opens a window you can drag to a second monitor.</span></button>
+        <button class="pd-choice" id="pdRemote"><b>${ico('phone')} On a tablet or phone</b><br><span class="muted">Shows a QR code. Works over the internet — the devices don't need to be on the same network.</span></button>
       </div>`;
     $('pdLocal').onclick = ()=>{ try{ localStorage.setItem('tp_pd_choice', 'local'); }catch{} $('presenterDialog').close(); H.openLocal(); };
     $('pdRemote').onclick = async ()=>{ try{ localStorage.setItem('tp_pd_choice', 'remote'); }catch{} if (await sess.start()){ pushAll(); renderDialog(); } };

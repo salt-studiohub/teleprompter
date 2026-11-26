@@ -5,6 +5,9 @@
   --labelColEm:2.2em; --labelColor:#64b5f6;
 }
 *{box-sizing:border-box}
+.ico{width:1.15em;height:1.15em;vertical-align:-.2em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.cdot{display:inline-block;width:.62em;height:.62em;border-radius:50%;background:#777;margin-right:.4em;vertical-align:.02em}
+.cdot.on{background:#43a047}
 html,body{height:100%;margin:0;background:#000;color:#fff;
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%}
 body{display:flex;flex-direction:column;overscroll-behavior:none}
