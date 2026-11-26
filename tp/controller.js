@@ -69,7 +69,7 @@ async function tryResume(){
 }
 
 // ============ transport ============
-function updatePlayUI(){ const b = $('playBtn'); b.innerHTML = st.playing ? ico('pause') + ' Pause' : ico('play') + ' Play'; b.classList.toggle('on', st.playing); $('spdVal').textContent = st.speed + ' px/s'; }
+function updatePlayUI(){ const b = $('playBtn'); b.innerHTML = ico(st.playing ? 'pause' : 'play') + '<span class="lbl"> ' + (st.playing ? 'Pause' : 'Play') + '</span>'; b.setAttribute('aria-label', st.playing ? 'Pause' : 'Play'); b.classList.toggle('on', st.playing); $('spdVal').textContent = st.speed + ' px/s'; }
 function rebase(){ st.pos = clamp(positionAt(st, now()), 0, maxPos(viewer, scale)); st.anchorMs = now(); }
 function play(){ rebase(); st.playing = true; updatePlayUI(); queue(playbackFields(), 0); sess.ping(); sess.scheduleBeat(); }
 function pause(){ rebase(); st.playing = false; updatePlayUI(); queue(playbackFields(), 0); }
