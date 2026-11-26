@@ -43,6 +43,19 @@
   button.danger{background:#7a1f1f;border-color:#a33}
   .muted{opacity:.75;font-size:13px}
   textarea,input[type=text]{width:100%;background:#0a0a0a;color:#fff;border:1px solid #222;border-radius:10px;padding:10px;font-size:16px}
+  /* preview = scaled copy of the presenter window's real screen */
+  .pvhost{flex:1;min-height:0;position:relative;overflow:hidden;background:#0b0b0b}
+  .stage.pv{position:absolute;left:50%;top:50%;flex:none;width:1920px;height:1080px;background:#000;box-shadow:0 0 0 1px #2a2a2a;transform-origin:center center}
+  .stage.pv .guide .grip{transform:scale(calc(1 / var(--k, 1)));transform-origin:left bottom}   /* keep the drag tab its natural size although the preview is scaled down */
+  .stage.pv .viewer{scrollbar-width:none}
+  .stage.pv .viewer::-webkit-scrollbar{display:none}
+  .titlebar{flex:none;display:flex;align-items:center;gap:8px;padding:8px 14px;background:#101010;border-bottom:1px solid #222;min-width:0;cursor:pointer}
+  .st-name{font-size:20px;font-weight:800;color:#fff;letter-spacing:.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .st-name.untitled{color:#8d9399}
+  .st-badge{flex:none;font-size:11px;border:1px solid #3a3a3a;border-radius:999px;padding:3px 9px;color:#c9ccd0;white-space:nowrap}
+  .st-badge.priv{border-color:#f59e0b;color:#f59e0b}
+  .st-unsaved{flex:none;font-size:12px;color:#f59e0b;white-space:nowrap}
+  .sec{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;opacity:.8;margin:10px 2px 2px}
   .top{flex:none;display:flex;align-items:center;gap:10px;padding:max(8px,env(safe-area-inset-top)) 12px 8px;background:#0e0e0e;border-bottom:1px solid #222}
   .top .back{color:#fff;text-decoration:none;font-size:26px;line-height:1;padding:0 6px}
   .chip{flex:1;min-width:0;text-align:left;border-radius:999px;font-size:14px;padding:8px 14px;background:#121212;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -112,11 +125,14 @@
     <button class="chip" id="sessChip"><span class="cdot"></span>No presenter window — tap to start</button>
     <button class="chip" id="viewSwitch" style="flex:none" title="Switch to the desktop interface (a running presenter window carries on)" aria-label="Desktop view"><svg class="ico" aria-hidden="true"><use href="#i-monitor"/></svg><span class="lbl"> Desktop view</span></button>
   </header>
+  <div class="titlebar" id="titleBar" role="button" title="Script title — tap to open the script"><span class="st-name untitled" id="stName">Untitled script</span><span class="st-badge" id="stBadge" hidden></span><span class="st-unsaved" id="stUnsaved" hidden>• unsaved</span></div>
   <div id="toast"></div>
 
-  <div class="stage" id="stage">
+  <div class="pvhost" id="pvHost">
+  <div class="stage pv" id="stage">
     <div class="guide" id="guide"><div class="grip" id="grip"><svg class="ico" aria-hidden="true"><use href="#i-arrows"/></svg> EYELINE</div></div>
     <div class="viewer" id="viewer"><div class="content" id="content"></div></div>
+  </div>
   </div>
 
   <nav class="dock">
@@ -147,6 +163,7 @@
     <div class="sh-head"><strong>Script</strong><button data-close>Done</button></div>
     <div class="sh-body">
       <div class="muted" id="curName">Not saved yet</div>
+      <label class="sw"><span><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg> Private — only you and the admin can open it</span><input id="cPrivate" type="checkbox"></label>
       <textarea id="scriptBox" style="height:38dvh" placeholder="Type or paste your script here… Blank lines start a new labelled paragraph (A, B, C …)."></textarea>
       <div class="muted" id="charInfo"></div>
       <div class="rowbtns">

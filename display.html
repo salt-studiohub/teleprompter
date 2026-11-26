@@ -133,7 +133,8 @@
     scale = layout(viewer, S).scale;
     if (dragging) document.documentElement.style.setProperty('--guideY', dragP + '%');   // keep the line under the finger
   }
-  window.addEventListener('resize', ()=>{ if (S.ready) apply(); });
+  let rzT = null;
+  window.addEventListener('resize', ()=>{ if (S.ready) apply(); clearTimeout(rzT); rzT = setTimeout(beat, 500); });
 
   // ---------- scrolling: computed locally from (pos, anchor, speed) ----------
   function frame(){
