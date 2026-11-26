@@ -824,7 +824,13 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   $('modeDesktop')?.addEventListener('click', ()=>{ try{ localStorage.setItem('tp_mode','desktop'); }catch{} $('modeDialog').close(); });
   $('modeMobile')?.addEventListener('click', ()=>{ try{ localStorage.setItem('tp_mode','mobile'); }catch{} location.href = 'mobile.html'; });
   $('toMobile')?.addEventListener('click', ()=>{ try{ localStorage.setItem('tp_mode','mobile'); }catch{} });
-  try{ if (!localStorage.getItem('tp_mode')) $('modeDialog').showModal(); }catch{}
+  try{
+    // suggest the likely choice: touch devices -> Mobile, otherwise Desktop
+    const coarse = window.matchMedia && matchMedia('(pointer: coarse)').matches;
+    const pick = $(coarse ? 'modeMobile' : 'modeDesktop');
+    if (pick){ pick.style.borderColor = '#2a7fff'; pick.insertAdjacentHTML('beforeend', '<div style="color:#9db8ff;font-size:12px;margin-top:6px">Suggested for this device</div>'); }
+    if (!localStorage.getItem('tp_mode')){ $('modeDialog').showModal(); if (pick) pick.focus(); }
+  }catch{}
 
   render(); manageAuto(); syncUIToggleLabel();
 })();
