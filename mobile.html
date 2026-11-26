@@ -41,7 +41,7 @@
   <h1>Teleprompter</h1>
   <p>Use two devices: one <b>controls</b> the script, the other is the <b>screen</b> the talent reads from. Both need an internet connection.</p>
 
-  <a class="big" id="ctlCard" href="controller.html">🎛 Controller
+  <a class="big" id="ctlCard" href="controller.html?view=mobile">🎛 Controller
     <small>Run the script, speed, settings and library from this iPad, phone or laptop. Sign in with Google.</small></a>
 
   <div class="big" style="cursor:default">📺 Presenter window
@@ -53,15 +53,17 @@
     <div id="rejoin" style="margin-top:10px" hidden><a class="link" id="rejoinLink" href="#" style="font-size:15px"></a></div>
   </div>
 
-  <p class="foot">Using a desktop computer with a second monitor? <a class="link" href="index.html?desktop=1">Use the desktop version</a></p>
+  <p class="foot" id="altCtl" hidden>Prefer the tablet-style controller on this computer? <a class="link" href="controller.html?view=mobile">Open it</a></p>
+  <p class="foot">Using a desktop computer with a second monitor? <a class="link" href="index.html?view=desktop">Use the desktop version</a></p>
   <p class="foot">This teleprompter app was developed with the help of Claude.</p>
 </main>
 <script>
   if (window.__desk){
     // A desktop computer uses the desktop version; its "Open Presenter Window" button can start a presenter window on a tablet or phone.
     const c = document.getElementById('ctlCard');
-    c.href = 'index.html?desktop=1';
+    c.href = 'index.html?view=desktop';
     c.querySelector('small').textContent = 'You are on a desktop computer, so this opens the desktop version. Its “Open Presenter Window” button can show a QR code to start the presenter window on a tablet or phone.';
+    document.getElementById('altCtl').hidden = false;
   } else { try{ localStorage.setItem('tp_mode', 'mobile'); }catch{} }
   const go = ()=>{ const c = document.getElementById('code').value.toUpperCase().replace(/[^A-Z0-9]/g,''); if (c.length === 8) location.href = 'display.html?code=' + c; else { document.getElementById('code').focus(); } };
   document.getElementById('join').addEventListener('click', go);

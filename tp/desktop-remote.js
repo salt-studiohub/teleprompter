@@ -3,7 +3,7 @@
 // Loaded lazily by index.html (if it can't load, e.g. offline, the button just opens the local window).
 import qrcode from './qrcode.mjs';
 import { createSession } from './session.js';
-import { esc, MAX_TEXT } from './core.js';
+import { esc, MAX_TEXT, positionAt } from './core.js';
 
 const H = window.tpHost;                 // provided by index.html
 const S = H.state;
@@ -132,8 +132,16 @@ async function onAuth(){
   if (!H.me()){ if (sess.active) sess.detach(); resumed = false; return; }
   if (resumed || !H.isMember()) return;
   resumed = true;
-  const d = await sess.resume();                  // we were running a remote presenter window before the page reloaded
-  if (d) pushAll();
+  const d = await sess.resume();                  // a remote presenter window was running (page reload, or switched from the mobile interface)
+  if (d){
+    // Carry on from where the session is: same position, same play/pause state. Text/settings from this device win.
+    pb = { playing: !!d.playing, pos: d.pos || 0, anchorMs: d.anchorMs || now(), speed: d.speed ?? S.speed };
+    lastText = typeof d.text === 'string' ? d.text : null;
+    lastSettings = JSON.stringify({ fontSize: d.fontSize, colWidth: d.colWidth, guidePos: d.guidePos, guideVisible: d.guideVisible, guideLocked: d.guideLocked, mirror: !!d.mirror, flip: !!d.flip, speed: d.speed });
+    const u = pb.playing ? positionAt(pb, now()) : pb.pos;
+    H.adopt(u, pb.playing, pb.speed);              // re-renders and broadcasts; any text/settings difference is pushed by the normal diff
+    sess.scheduleBeat();
+  }
 }
 document.addEventListener('tp-auth', onAuth);
 onAuth();

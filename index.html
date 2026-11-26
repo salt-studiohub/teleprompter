@@ -16,9 +16,12 @@
       return !(window.matchMedia && matchMedia('(pointer: coarse)').matches);
     }catch{ return true; }
   })();
+  /* The "Mobile view" / "Desktop view" switch buttons store an EXPLICIT choice (tp_view) that beats autodetect. */
   try{
-    if (/[?&]desktop\b/.test(location.search)) localStorage.setItem('tp_mode', 'desktop');
-    else if (!window.__tpDesktop && localStorage.getItem('tp_mode') === 'mobile') location.replace('mobile.html');
+    const ls = localStorage;
+    if (/[?&](?:view=desktop|desktop)\b/.test(location.search)){ ls.setItem('tp_mode', 'desktop'); ls.setItem('tp_view', 'desktop'); }
+    else if (ls.getItem('tp_view') === 'mobile') location.replace('controller.html');
+    else if (!window.__tpDesktop && ls.getItem('tp_mode') === 'mobile') location.replace('mobile.html');
   }catch{}
 </script>
 <style>
@@ -153,6 +156,7 @@
           <button id="prompterFS" class="ui-pill" title="Try to fullscreen the Presenter window">Presenter Fullscreen</button>
           <button id="fullscreenOp" class="ui-pill" title="F to toggle fullscreen">Fullscreen</button>
           <button id="toggleUIBtn" class="ui-pill" title="T to toggle tools">Hide Tools</button>
+          <button id="viewMobile" class="ui-pill" title="Switch to the mobile / tablet interface (a running presenter window carries on)">📱 Mobile view</button>
           <details class="keys" id="keys">
             <summary class="ui-pill" style="display:inline-block;border:1px solid #333;background:#121212;padding:6px 11px;font-size:13px">⌨ Shortcuts</summary>
             <div class="keys-pop">
@@ -676,7 +680,14 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   }
 
   // Bridge for the optional remote presenter window (tablet/phone). It mirrors the same messages the local popup receives.
+  $('viewMobile')?.addEventListener('click', ()=>{
+    if (prompterWin && !prompterWin.closed && !confirm('The presenter window open on this computer will disconnect when you switch. Switch to the mobile view?')) return;
+    try{ localStorage.setItem('tp_view', 'mobile'); }catch{}
+    location.href = 'controller.html?view=mobile';
+  });
   window.tpHost = { state, onSend: null, openLocal: ()=>openPrompter(),
+    // continue a running remote presenter window after switching interface or reloading: same position, same play state
+    adopt: (u, playing, spd)=>{ state.scrollTop = u; state.autoscroll = !!playing; if (typeof spd === 'number') state.speed = spd; render(); broadcastState(); manageAuto(); },
     setGuide: (p)=>{ setGuidePos(p); saveUI(); broadcastState(); },
     previewGuide: (p)=>document.documentElement.style.setProperty('--guideY', p + '%') };
   function send(msg){

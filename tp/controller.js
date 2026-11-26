@@ -273,7 +273,8 @@ $('acctBtn').addEventListener('click', async ()=>{
   if (!cloud.me){ cloud.signIn(); return; }
   if (confirm(`Signed in as ${cloud.me.email}.\n\nSign out?`)){ sess.detach(); await cloud.signOut(); }
 });
-$('toDesktop').addEventListener('click', ()=>{ try{ localStorage.setItem('tp_mode', 'desktop'); }catch{} });
+$('toDesktop').addEventListener('click', ()=>{ try{ localStorage.setItem('tp_mode', 'desktop'); localStorage.setItem('tp_view', 'desktop'); }catch{} });
+$('viewSwitch').addEventListener('click', ()=>{ try{ localStorage.setItem('tp_mode', 'desktop'); localStorage.setItem('tp_view', 'desktop'); }catch{} location.href = 'index.html?view=desktop'; });   // the presenter session is remembered and the desktop interface resumes it
 
 // ============ keyboard (laptop / iPad keyboard) ============
 document.addEventListener('keydown', (e)=>{
