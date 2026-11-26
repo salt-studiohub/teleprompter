@@ -25,27 +25,39 @@
   .ui-restore{position:fixed;top:10px;right:10px;z-index:9999;display:none}
   body.ui-hidden .ui-restore{display:block}
 
-  .topbar{position:sticky;top:0;z-index:10;background:#0e0e0e;border-bottom:1px solid #222}
-  .topbar-inner{max-width:1400px;margin:0 auto;padding:12px 16px;display:grid;grid-template-columns:1fr auto;gap:12px}
-  .controls{display:grid;grid-template-columns:repeat(4, minmax(220px, 1fr));gap:10px 16px;align-items:center}
-  .controls label{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:14px;background:#0b0b0b;border:1px solid #222;border-radius:12px;padding:8px 10px}
-  .controls input[type="range"]{width:180px}
   .muted{opacity:.75;font-size:12px}
   .small{font-size:12px}
 
-  .actions{display:flex;flex-direction:column;gap:8px;align-items:flex-end}
-  .actions .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
-  .toggles{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
-  .toggle{display:flex;gap:10px;align-items:center;background:#0b0b0b;border:1px solid #222;border-radius:999px;padding:8px 12px;font-size:14px}
-  .toggle input{margin:0}
-
-  button{background:#1f1f1f;color:#fff;border:1px solid #333;border-radius:12px;padding:10px 14px;cursor:pointer}
+  button{background:#1f1f1f;color:#fff;border:1px solid #333;border-radius:10px;padding:7px 12px;font-size:13px;cursor:pointer}
   button:hover{background:#262626}
-  .ui-pill{border-radius:999px;padding:8px 12px;border:1px solid #333;background:#121212}
+  .ui-pill{border-radius:999px;padding:6px 11px;border:1px solid #333;background:#121212}
+  textarea{height:76px;width:100%;resize:vertical;background:#0a0a0a;color:#fff;border:1px solid #222;border-radius:10px;padding:8px 10px;font-size:14px}
 
-  .script-wrap{max-width:1400px;margin:0 auto;padding:0 16px 10px}
-  .script-wrap label{display:block;margin:6px 0 6px;font-size:12px;opacity:.9}
-  textarea{height:120px;width:100%;resize:vertical;background:#0a0a0a;color:#fff;border:1px solid #222;border-radius:10px;padding:10px}
+  /* ---- Top toolbar (compact) ---- */
+  .topbar{position:sticky;top:0;z-index:10;background:#0e0e0e;border-bottom:1px solid #222}
+  .tb{max-width:1400px;margin:0 auto;padding:8px 14px;display:flex;flex-direction:column;gap:8px}
+  .tb-head{display:flex;align-items:center;justify-content:space-between;gap:8px 14px;flex-wrap:wrap}
+  .tb-left{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;min-width:0}
+  .tb-left h2{margin:0;font-size:17px;letter-spacing:.02em}
+  .acct{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+  .acct #authInfo{max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tb-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .tb-panel{display:flex;gap:8px 12px;flex-wrap:wrap;align-items:center}
+  .tb-toggles{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .toggle{display:flex;gap:6px;align-items:center;background:#0b0b0b;border:1px solid #222;border-radius:999px;padding:5px 10px;font-size:12px;white-space:nowrap}
+  .toggle input{margin:0}
+  .tb-sliders{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;flex:1;min-width:min(100%,540px)}
+  .ctl{background:#0b0b0b;border:1px solid #222;border-radius:10px;padding:5px 10px 6px;font-size:12px}
+  .ctl-top{display:flex;justify-content:space-between;gap:8px;opacity:.9}
+  .ctl input[type=range]{width:100%;margin:3px 0 0;display:block}
+  .tb-script{display:flex;flex-direction:column;gap:5px}
+  .script-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+  #status{text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .script-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  details.keys{position:relative}
+  details.keys summary{list-style:none;cursor:pointer}
+  details.keys summary::-webkit-details-marker{display:none}
+  .keys-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:30;background:#0f0f0f;border:1px solid #333;border-radius:12px;padding:10px 14px;width:min(92vw,340px);font-size:12px;line-height:2;box-shadow:0 8px 24px rgba(0,0,0,.6);display:grid;grid-template-columns:auto 1fr;gap:0 12px}
 
   .stage{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;border-top:1px solid #222}
   .viewer{position:relative;overflow:auto;flex:1;min-height:0}
@@ -87,7 +99,6 @@
 
   .app-footer{flex:none;font-size:11px;opacity:.55;text-align:center;padding:4px 8px;border-top:1px solid #1a1a1a}
   body.ui-hidden .app-footer{display:none}
-  .auth-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .team-row{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #222;border-radius:12px;padding:8px 10px;margin:6px 0;background:#0b0b0b}
 
   /* Load dialog */
@@ -107,57 +118,64 @@
 
   <!-- Sticky Top Toolbar -->
   <div class="topbar">
-    <div class="topbar-inner">
-      <div>
-        <h2 style="margin:0;">Operator</h2>
-        <div class="muted small" id="instructions">
-          Keys: <span class="kbd">Space</span> autoscroll · <span class="kbd">↑/↓</span> nudge ·
-          <span class="kbd">G</span> guide · <span class="kbd">+</span>/<span class="kbd">−</span> speed · <span class="kbd">Home</span> top · <span class="kbd">PgUp/PgDn</span> page · click a label to jump ·
-          <span class="kbd">T</span> tools · <span class="kbd">F</span> fullscreen · <span class="kbd">⌘/Ctrl+S</span> save
+    <div class="tb">
+      <div class="tb-head">
+        <div class="tb-left">
+          <h2>Operator</h2>
+          <div class="acct">
+            <button id="authBtn" class="ui-pill" title="Sign in to use the team library">Sign in with Google</button>
+            <button id="teamBtn" class="ui-pill" style="display:none" title="Add or remove team members (admin only)">👥 Team</button>
+            <span id="authInfo" class="muted"></span>
+          </div>
         </div>
-      </div>
-      <div class="actions">
-        <div class="row">
+        <div class="tb-actions">
           <button id="openPrompter">Open Prompter Window</button>
           <button id="prompterFS" class="ui-pill" title="Try to fullscreen the Prompter window">Prompter Fullscreen</button>
           <button id="fullscreenOp" class="ui-pill" title="F to toggle fullscreen">Fullscreen</button>
           <button id="toggleUIBtn" class="ui-pill" title="T to toggle tools">Hide Tools</button>
+          <details class="keys" id="keys">
+            <summary class="ui-pill" style="display:inline-block;border:1px solid #333;background:#121212;padding:6px 11px;font-size:13px">⌨ Shortcuts</summary>
+            <div class="keys-pop">
+              <span><span class="kbd">Space</span></span><span>Start / stop autoscroll</span>
+              <span><span class="kbd">↑</span> <span class="kbd">↓</span></span><span>Nudge</span>
+              <span><span class="kbd">+</span> <span class="kbd">−</span></span><span>Speed up / down</span>
+              <span><span class="kbd">Home</span> <span class="kbd">End</span></span><span>Top / bottom</span>
+              <span><span class="kbd">PgUp</span> <span class="kbd">PgDn</span></span><span>Page up / down</span>
+              <span><span class="kbd">G</span></span><span>Show / hide guide</span>
+              <span><span class="kbd">T</span></span><span>Show / hide tools</span>
+              <span><span class="kbd">F</span></span><span>Fullscreen</span>
+              <span><span class="kbd">⌘/Ctrl+S</span></span><span>Save</span>
+              <span>Click a label</span><span>Jump to that paragraph</span>
+            </div>
+          </details>
         </div>
-        <div class="toggles">
-          <label class="toggle"><input id="showGuide" type="checkbox" checked> Show Guide</label>
+      </div>
+
+      <div class="tb-panel">
+        <div class="tb-toggles">
+          <label class="toggle"><input id="showGuide" type="checkbox" checked> Show guide</label>
+          <label class="toggle"><input id="guideLock" type="checkbox"> Lock guide</label>
           <label class="toggle"><input id="autoscroll" type="checkbox"> Autoscroll</label>
-          <label class="toggle"><input id="invertH" type="checkbox"> Mirror (Prompter only)</label>
-          <label class="toggle"><input id="invertV" type="checkbox"> Flip (Prompter only)</label>
-          <label class="toggle"><input id="guideLock" type="checkbox"> Lock Guide</label>
+          <label class="toggle" title="Applies to the Prompter window only"><input id="invertH" type="checkbox"> Mirror</label>
+          <label class="toggle" title="Applies to the Prompter window only"><input id="invertV" type="checkbox"> Flip</label>
+        </div>
+        <div class="tb-sliders" id="controls">
+          <label class="ctl"><div class="ctl-top"><span>Font size</span><span id="fontSizeVal">64px</span></div><input id="fontSize" type="range" min="20" max="160" value="64"></label>
+          <label class="ctl"><div class="ctl-top"><span>Column width</span><span id="colWidthVal">1000px</span></div><input id="colWidth" type="range" min="600" max="1600" step="10" value="1000"></label>
+          <label class="ctl"><div class="ctl-top"><span>Guide position</span><span id="guideVal">35%</span></div><input id="guidePos" type="range" min="2" max="98" step="0.5" value="35"></label>
+          <label class="ctl"><div class="ctl-top"><span>Speed</span><span id="speedVal">80 px/s</span></div><input id="speed" type="range" min="10" max="300" step="5" value="80"></label>
         </div>
       </div>
-    </div>
 
-    <div class="topbar-inner" style="grid-template-columns:1fr;gap:10px 16px;">
-      <div class="controls" id="controls">
-        <label>Font Size <span style="display:flex;gap:10px;align-items:center"><input id="fontSize" type="range" min="20" max="160" value="64"><span id="fontSizeVal">64px</span></span></label>
-        <label>Column Width <span style="display:flex;gap:10px;align-items:center"><input id="colWidth" type="range" min="600" max="1600" step="10" value="1000"><span id="colWidthVal">1000px</span></span></label>
-        <label>Guide Position <span style="display:flex;gap:10px;align-items:center"><input id="guidePos" type="range" min="2" max="98" step="0.5" value="35"><span id="guideVal">35%</span></span></label>
-        <label>Speed <span style="display:flex;gap:10px;align-items:center"><input id="speed" type="range" min="10" max="300" step="5" value="80"><span id="speedVal">80 px/s</span></span></label>
-      </div>
-    </div>
-
-    <div class="script-wrap">
-      <label>Script</label>
-      <textarea id="script" placeholder="Type or paste your script here..."></textarea>
-      <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;margin-top:6px">
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button id="applyScript">Load to Preview & Prompter</button>
+      <div class="tb-script">
+        <div class="script-head"><span class="muted">Script</span><span id="status" class="muted">–</span></div>
+        <textarea id="script" placeholder="Type or paste your script here..."></textarea>
+        <div class="script-actions">
+          <button id="applyScript" title="Re-send the script to the preview and prompter">Load to Preview & Prompter</button>
           <button id="saveScript" title="Save/Update script (team library)">💾 Save</button>
           <button id="saveAsScript" title="Save the editor contents as a NEW script">Save As</button>
           <button id="loadScript" title="Open a script from the team library">📂 Load</button>
-          <span class="auth-row">
-            <button id="authBtn" class="ui-pill" title="Sign in to use the team library">Sign in with Google</button>
-            <button id="teamBtn" class="ui-pill" style="display:none" title="Add or remove team members (admin only)">👥 Team</button>
-            <span id="authInfo" class="muted"></span>
-          </span>
         </div>
-        <span id="status" class="muted">–</span>
       </div>
     </div>
   </div>
@@ -765,6 +783,9 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   // Restore the last script text after a refresh
   try{ const t = localStorage.getItem('tp_text'); if (t){ state.text = t; if (scriptBox) scriptBox.value = t; } }catch{}
 
+  // Close the Shortcuts dropdown when clicking elsewhere
+  document.addEventListener('click', (e)=>{ const d = document.getElementById('keys'); if (d && d.open && !d.contains(e.target)) d.open = false; });
+
   render(); manageAuto(); syncUIToggleLabel();
 })();
 </script>
@@ -840,8 +861,10 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   function updateAuthUI(){
     if (authBtn) authBtn.textContent = me ? 'Sign out' : 'Sign in with Google';
     if (teamBtn) teamBtn.style.display = isAdmin ? '' : 'none';
-    if (authInfo) authInfo.textContent = !me ? 'Not signed in — sign in to save or load scripts'
-      : `${me.email} · ${isAdmin ? 'admin' : isMember ? 'team member' : 'NOT on the team list — ask the admin to add this email'}`;
+    if (authInfo){
+      authInfo.textContent = !me ? 'Not signed in' : `${me.email} · ${isAdmin ? 'admin' : isMember ? 'team member' : 'not on team list'}`;
+      authInfo.title = !me ? 'Sign in to save or load scripts' : (isMember ? me.email : `${me.email} is not on the team list — ask the admin to add this email under 👥 Team`);
+    }
   }
   function authError(err){
     if (!err || err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') return;
