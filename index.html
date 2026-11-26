@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Teleprompter — Fixed Width & Font (Synced, Public Cloud Save)</title>
+<title>Teleprompter — Operator & Prompter</title>
 <style>
   :root{
     --fontSize: 64px;        /* fixed px font size */
@@ -85,6 +85,11 @@
   #content .label{cursor:pointer}
   #content .label:hover{color:#fff}
 
+  .app-footer{flex:none;font-size:11px;opacity:.55;text-align:center;padding:4px 8px;border-top:1px solid #1a1a1a}
+  body.ui-hidden .app-footer{display:none}
+  .auth-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .team-row{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #222;border-radius:12px;padding:8px 10px;margin:6px 0;background:#0b0b0b}
+
   /* Load dialog */
   dialog#loadDialog{border:1px solid #333;background:#0f0f0f;color:#fff;border-radius:16px;padding:0;max-width:640px;width:90%}
   .dlg-head{padding:14px 16px;border-bottom:1px solid #222;display:flex;align-items:center;justify-content:space-between}
@@ -143,9 +148,14 @@
       <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;margin-top:6px">
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button id="applyScript">Load to Preview & Prompter</button>
-          <button id="saveScript" title="Save/Update script (public)">💾 Save</button>
+          <button id="saveScript" title="Save/Update script (team library)">💾 Save</button>
           <button id="saveAsScript" title="Save the editor contents as a NEW script">Save As</button>
-          <button id="loadScript" title="Load a saved script (public)">📂 Load</button>
+          <button id="loadScript" title="Open a script from the team library">📂 Load</button>
+          <span class="auth-row">
+            <button id="authBtn" class="ui-pill" title="Sign in to use the team library">Sign in with Google</button>
+            <button id="teamBtn" class="ui-pill" style="display:none" title="Add or remove team members (admin only)">👥 Team</button>
+            <span id="authInfo" class="muted"></span>
+          </span>
         </div>
         <span id="status" class="muted">–</span>
       </div>
@@ -160,17 +170,37 @@
     </div>
   </div>
 
+  <footer class="app-footer">This teleprompter app was developed with the help of Claude.</footer>
+
+  <!-- Team dialog (admin only) -->
+  <dialog id="teamDialog">
+    <div class="dlg-head">
+      <strong>Team members</strong>
+      <button id="closeTeam">Close</button>
+    </div>
+    <div class="dlg-body">
+      <div class="muted" style="margin-bottom:8px">Only people on this list (plus you, the admin) can open, save or delete scripts. They sign in with the Google account for the email you add.</div>
+      <textarea id="teamEmail" style="height:84px" placeholder="Paste emails here — one or many, separated by commas, spaces or new lines.&#10;Copied address-book entries like  Name &lt;name@example.com&gt;  work too." autocomplete="off" spellcheck="false"></textarea>
+      <div style="display:flex;gap:8px;align-items:center;margin:8px 0">
+        <button id="teamAdd">Add to team</button>
+        <span class="muted">Tip: Ctrl/⌘ + Enter also adds</span>
+      </div>
+      <div id="teamMsg" class="muted" style="margin-bottom:8px;min-height:1.2em"></div>
+      <div id="teamList"></div>
+    </div>
+  </dialog>
+
   <!-- Load dialog -->
   <dialog id="loadDialog">
     <div class="dlg-head">
-      <strong>Saved Scripts (Public)</strong>
+      <strong>Saved Scripts (Team)</strong>
       <button id="closeDialog">Close</button>
     </div>
     <div class="dlg-body">
       <div id="savedList" class="saved-list"></div>
     </div>
     <div class="dlg-foot">
-      <span class="muted">Click “Load” to replace the current script. (Public list)</span>
+      <span class="muted">Click “Load” to open that script. What's in the editor is saved first.</span>
     </div>
   </dialog>
 
@@ -742,8 +772,9 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
 <!-- ===== Firebase: PUBLIC Save/Load (no login, no code) ===== -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
   import {
-    getFirestore, collection, addDoc, getDocs, getDoc, doc, deleteDoc, updateDoc,
+    getFirestore, collection, addDoc, getDocs, getDoc, doc, deleteDoc, updateDoc, setDoc,
     serverTimestamp, query, orderBy, enableIndexedDbPersistence
   } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
 
@@ -759,11 +790,14 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
 
   const app = initializeApp(firebaseConfig);
   const db   = getFirestore(app);
+  const auth = getAuth(app);
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
 
   // Optional offline cache
   try{ await enableIndexedDbPersistence(db); }catch(e){ console.warn('Persistence not available:', e?.code || e); }
 
-  const COLL = 'publicScripts'; // public collection
+  const COLL = 'publicScripts'; // scripts collection (name kept so existing scripts stay; access is now team-only via the rules)
 
   // DOM
   const $ = (id)=>document.getElementById(id);
@@ -788,8 +822,97 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
 
   document.addEventListener('tp-save', ()=>doSave());
 
+  // ===== Sign-in, team membership and admin =====
+  // Real enforcement is in the Firestore rules; this UI just mirrors it.
+  //  - admin  : can LIST the members collection (rules allow that for the admin email only)
+  //  - member : has a members/<their-email> document
+  const authBtn = $('authBtn'), authInfo = $('authInfo'), teamBtn = $('teamBtn');
+  const teamDlg = $('teamDialog'), teamList = $('teamList'), teamEmail = $('teamEmail'), teamAdd = $('teamAdd');
+  let me = null, isMember = false, isAdmin = false;
+
+  async function refreshRole(user){
+    isMember = false; isAdmin = false;
+    if (!user) return;
+    const email = (user.email || '').toLowerCase();
+    try{ await getDocs(collection(db, 'members')); isAdmin = true; isMember = true; return; }catch{}
+    try{ const d = await getDoc(doc(db, 'members', email)); isMember = d.exists(); }catch{ isMember = false; }
+  }
+  function updateAuthUI(){
+    if (authBtn) authBtn.textContent = me ? 'Sign out' : 'Sign in with Google';
+    if (teamBtn) teamBtn.style.display = isAdmin ? '' : 'none';
+    if (authInfo) authInfo.textContent = !me ? 'Not signed in — sign in to save or load scripts'
+      : `${me.email} · ${isAdmin ? 'admin' : isMember ? 'team member' : 'NOT on the team list — ask the admin to add this email'}`;
+  }
+  function authError(err){
+    if (!err || err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') return;
+    console.error(err);
+    alert(err.code === 'auth/unauthorized-domain' ? 'Sign-in blocked: add this site\'s domain under Firebase Console → Authentication → Settings → Authorized domains.'
+        : err.code === 'auth/operation-not-allowed' ? 'Google sign-in is not enabled: Firebase Console → Authentication → Sign-in method → Google → Enable.'
+        : err.code === 'auth/popup-blocked' ? 'The sign-in pop-up was blocked. Allow pop-ups for this site and try again.'
+        : 'Sign-in failed. See console for details.');
+  }
+  async function signInNow(){ try{ await signInWithPopup(auth, provider); }catch(err){ authError(err); } }
+  authBtn?.addEventListener('click', ()=>{ if (me) signOut(auth).catch(console.error); else signInNow(); });
+  onAuthStateChanged(auth, async (user)=>{ me = user || null; await refreshRole(me); updateAuthUI(); });
+  updateAuthUI();
+
+  // Every cloud action goes through this gate
+  async function requireTeam(){
+    if (!me){ setStatus?.('Sign in with Google to use the team library, then try again.'); await signInNow(); return false; }
+    if (!isMember){ alert(`${me.email} is not on the team list.\n\nAsk the admin to add this email under 👥 Team.`); return false; }
+    return true;
+  }
+
+  // ----- Team management (admin only) -----
+  async function renderTeam(){
+    teamList.innerHTML = '<div class="muted">Loading…</div>';
+    try{
+      const snap = await getDocs(collection(db, 'members'));
+      const rows = []; snap.forEach(d=>rows.push(d.id)); rows.sort();
+      teamList.innerHTML = rows.length ? '' : '<div class="muted">No team members yet. Add emails above — you, the admin, always have access.</div>';
+      rows.forEach(email=>{
+        const row = document.createElement('div'); row.className = 'team-row';
+        row.innerHTML = `<span>${esc(email)}</span><button class="rmMember" data-email="${esc(email)}">Remove</button>`;
+        teamList.appendChild(row);
+      });
+    }catch(err){ console.error(err); teamList.innerHTML = '<div class="muted">Could not load the team list (admin only).</div>'; }
+  }
+  teamBtn?.addEventListener('click', ()=>{ if (!isAdmin) return; teamDlg?.showModal(); renderTeam(); });
+  $('closeTeam')?.addEventListener('click', ()=>teamDlg?.close());
+  // Paste any number of emails: split on spaces, commas, semicolons, new lines and <>, then validate each one
+  const EMAIL_RE = /^[^\s@\/]+@[^\s@\/]+\.[^\s@\/]+$/;
+  async function addMember(){
+    const tokens = (teamEmail.value || '').split(/[\s,;<>()"']+/).map(t=>t.trim().toLowerCase()).filter(Boolean);
+    const found = [...new Set(tokens.filter(t=>EMAIL_RE.test(t)))];
+    const invalid = [...new Set(tokens.filter(t=>t.includes('@') && !EMAIL_RE.test(t)))];
+    const msg = $('teamMsg');
+    if (!found.length){ msg.textContent = invalid.length ? `Not valid: ${invalid.join(', ')}` : 'No email addresses found in what you pasted.'; return; }
+    try{
+      const snap = await getDocs(collection(db, 'members'));
+      const have = new Set(); snap.forEach(d=>have.add(d.id));
+      const fresh = found.filter(e=>!have.has(e));
+      await Promise.all(fresh.map(email=>setDoc(doc(db, 'members', email), { email, addedBy: me?.email || '', addedAt: serverTimestamp() })));
+      const parts = [];
+      if (fresh.length) parts.push(`Added ${fresh.length}: ${fresh.join(', ')}`);
+      if (found.length - fresh.length) parts.push(`${found.length - fresh.length} already on the team`);
+      if (invalid.length) parts.push(`not valid (skipped): ${invalid.join(', ')}`);
+      msg.textContent = parts.join(' · ');
+      teamEmail.value = ''; setStatus?.(fresh.length ? `Added ${fresh.length} team member${fresh.length>1?'s':''}.` : 'No new team members.');
+      renderTeam();
+    }catch(err){ console.error(err); msg.textContent = 'Could not add members. Only the admin can change the team.'; }
+  }
+  teamAdd?.addEventListener('click', addMember);
+  teamEmail?.addEventListener('keydown', (e)=>{ if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)){ e.preventDefault(); addMember(); } });
+  teamList?.addEventListener('click', async (e)=>{
+    const email = e.target?.dataset?.email;
+    if (!email || !e.target.classList.contains('rmMember')) return;
+    if (!confirm(`Remove ${email} from the team? They will no longer be able to open or save scripts.`)) return;
+    try{ await deleteDoc(doc(db, 'members', email)); renderTeam(); }catch(err){ console.error(err); alert('Could not remove that member.'); }
+  });
+
   // Save As: always creates a NEW script from the editor contents and makes it the current one
   async function doSaveAs(){
+    if (!(await requireTeam())) return;
     const text = scriptBox?.value || '';
     const name = prompt('Save as — enter a name for the new script:', currentName ? `${currentName} (copy)` : '');
     if (name === null) return;
@@ -807,6 +930,7 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   }
 
   async function doSave(){
+    if (!(await requireTeam())) return;
     const text = scriptBox?.value || '';
     const name = prompt('Enter a name for this script:', currentName || '');
     if (name === null) return;
@@ -847,6 +971,7 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   }
 
   async function showList(){
+    if (!(await requireTeam())) return;
     dlg?.showModal();
     if (listEl) listEl.innerHTML = '<div class="muted">Loading…</div>';
     try{
@@ -985,13 +1110,25 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
 </script>
 
 <!--
-FIRESTORE RULES for PUBLIC mode (paste in Console → Firestore → Rules):
+FIRESTORE RULES (team-only). Paste in Firebase Console → Firestore Database → Rules → Publish.
+Replace ADMIN-EMAIL@example.com with the admin's Google account email.
+Team members are added in the app (admin → "Team" button), not by editing these rules.
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() { return request.auth != null && request.auth.token.email_verified == true; }
+    function mail()     { return request.auth.token.email.lower(); }
+    function isAdmin()  { return signedIn() && mail() == 'ADMIN-EMAIL@example.com'; }
+    function isMember() { return isAdmin() || (signedIn() && exists(/databases/$(database)/documents/members/$(mail()))); }
+
+    match /members/{memberEmail} {
+      allow get:   if signedIn() && (isAdmin() || mail() == memberEmail);
+      allow list:  if isAdmin();
+      allow write: if isAdmin();
+    }
     match /publicScripts/{docId} {
-      allow read, list, get: if true;
-      allow create, update, delete: if true;
+      allow read, write: if isMember();
     }
   }
 }
