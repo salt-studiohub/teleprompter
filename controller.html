@@ -10,6 +10,19 @@
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="apple-touch-icon" href="icon-180.png" />
 <title>Teleprompter controller</title>
+<script>
+  /* Desktop computers use the desktop version: its "Open Presenter Window" button can start a presenter window on a
+     tablet or phone (QR code). Add ?force=1 to stay on this tablet controller page anyway. */
+  function __isDesktopComputer(){
+    try{
+      const ua = navigator.userAgent || '';
+      if (/Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(ua)) return false;
+      if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) return false;   // iPadOS pretends to be a Mac
+      return !(window.matchMedia && matchMedia('(pointer: coarse)').matches);
+    }catch{ return true; }
+  }
+  if (!/[?&]force\b/.test(location.search) && __isDesktopComputer()) location.replace('index.html?desktop=1');
+</script>
 <link rel="stylesheet" href="tp/core.css" />
 <style>
   html,body{height:100%}
@@ -67,7 +80,7 @@
   <div class="gate" id="gate" hidden>
     <div class="card">
       <h1>Controller</h1>
-      <p id="gateMsg">Sign in with Google to run a prompter session.</p>
+      <p id="gateMsg">Sign in with Google to run a presenter window.</p>
       <button class="primary" id="gateGo">Sign in with Google</button>
       <p><a href="mobile.html">← Back</a> · <a href="index.html?desktop=1" id="toDesktop">Use the desktop version</a></p>
     </div>
@@ -75,7 +88,7 @@
 
   <header class="top">
     <a class="back" href="mobile.html" title="Back">‹</a>
-    <button class="chip" id="sessChip">○ No session — tap to start</button>
+    <button class="chip" id="sessChip">○ No presenter window — tap to start</button>
   </header>
   <div id="toast"></div>
 
@@ -101,7 +114,7 @@
       <button data-sheet="script">✎ Script</button>
       <button data-sheet="settings">⚙ Settings</button>
       <button data-sheet="library">📂 Library</button>
-      <button data-sheet="session">📡 Session</button>
+      <button data-sheet="session">📺 Presenter window</button>
       <button id="teamTab" data-sheet="team" hidden>👥 Team</button>
       <button id="acctBtn" title="Account / sign out">👤</button>
     </div>
@@ -132,9 +145,9 @@
       <label class="ctl"><div class="ctl-top"><span>Speed</span><b id="vSpeed"></b></div><input id="rSpeed" type="range" min="10" max="300" step="5"></label>
       <label class="sw"><span>Show eye line</span><input id="cGuide" type="checkbox"></label>
       <label class="sw"><span>Lock eye line</span><input id="cLock" type="checkbox"></label>
-      <label class="sw"><span>Mirror (prompter screen)</span><input id="cMirror" type="checkbox"></label>
-      <label class="sw"><span>Flip (prompter screen)</span><input id="cFlip" type="checkbox"></label>
-      <div class="muted">Tip: drag the red EYELINE tab on the preview — or on the prompter screen itself — to place it where the talent's eyes are.</div>
+      <label class="sw"><span>Mirror (presenter window)</span><input id="cMirror" type="checkbox"></label>
+      <label class="sw"><span>Flip (presenter window)</span><input id="cFlip" type="checkbox"></label>
+      <div class="muted">Tip: drag the red EYELINE tab on the preview — or on the presenter window itself — to place it where the talent's eyes are.</div>
     </div>
   </dialog>
 
@@ -150,7 +163,7 @@
 
   <!-- Session -->
   <dialog class="sheet" id="sheet-session">
-    <div class="sh-head"><strong>Prompter session</strong><button data-close>Done</button></div>
+    <div class="sh-head"><strong>Presenter window</strong><button data-close>Done</button></div>
     <div class="sh-body" id="sessBody"></div>
   </dialog>
 
@@ -158,7 +171,7 @@
   <dialog class="sheet" id="sheet-team">
     <div class="sh-head"><strong>Team members</strong><button data-close>Done</button></div>
     <div class="sh-body">
-      <div class="muted">Only people on this list (plus you, the admin) can run sessions and use the library. They sign in with the Google account for the email you add.</div>
+      <div class="muted">Only people on this list (plus you, the admin) can run a presenter window and use the library. They sign in with the Google account for the email you add.</div>
       <textarea id="teamEmail" style="height:90px" placeholder="Paste emails — one or many, separated by commas, spaces or new lines." autocomplete="off" spellcheck="false"></textarea>
       <button id="teamAdd" class="primary">Add to team</button>
       <div class="muted" id="teamMsg"></div>
