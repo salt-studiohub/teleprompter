@@ -88,7 +88,6 @@
   .app-footer{flex:none;font-size:11px;opacity:.55;text-align:center;padding:4px 8px;border-top:1px solid #1a1a1a}
   body.ui-hidden .app-footer{display:none}
   .auth-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  input[type=email]{background:#0a0a0a;color:#fff;border:1px solid #222;border-radius:10px;padding:9px 10px;min-width:240px;flex:1}
   .team-row{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #222;border-radius:12px;padding:8px 10px;margin:6px 0;background:#0b0b0b}
 
   /* Load dialog */
@@ -181,10 +180,12 @@
     </div>
     <div class="dlg-body">
       <div class="muted" style="margin-bottom:8px">Only people on this list (plus you, the admin) can open, save or delete scripts. They sign in with the Google account for the email you add.</div>
-      <div style="display:flex;gap:8px;margin-bottom:8px">
-        <input id="teamEmail" type="email" placeholder="teammate@example.com" autocomplete="off">
-        <button id="teamAdd">Add</button>
+      <textarea id="teamEmail" style="height:84px" placeholder="Paste emails here — one or many, separated by commas, spaces or new lines.&#10;Copied address-book entries like  Name &lt;name@example.com&gt;  work too." autocomplete="off" spellcheck="false"></textarea>
+      <div style="display:flex;gap:8px;align-items:center;margin:8px 0">
+        <button id="teamAdd">Add to team</button>
+        <span class="muted">Tip: Ctrl/⌘ + Enter also adds</span>
       </div>
+      <div id="teamMsg" class="muted" style="margin-bottom:8px;min-height:1.2em"></div>
       <div id="teamList"></div>
     </div>
   </dialog>
@@ -878,16 +879,30 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   }
   teamBtn?.addEventListener('click', ()=>{ if (!isAdmin) return; teamDlg?.showModal(); renderTeam(); });
   $('closeTeam')?.addEventListener('click', ()=>teamDlg?.close());
+  // Paste any number of emails: split on spaces, commas, semicolons, new lines and <>, then validate each one
+  const EMAIL_RE = /^[^\s@\/]+@[^\s@\/]+\.[^\s@\/]+$/;
   async function addMember(){
-    const email = (teamEmail.value || '').trim().toLowerCase();
-    if (!/^[^\s@\/]+@[^\s@\/]+\.[^\s@\/]+$/.test(email)){ alert('Please enter a valid email address.'); return; }
+    const tokens = (teamEmail.value || '').split(/[\s,;<>()"']+/).map(t=>t.trim().toLowerCase()).filter(Boolean);
+    const found = [...new Set(tokens.filter(t=>EMAIL_RE.test(t)))];
+    const invalid = [...new Set(tokens.filter(t=>t.includes('@') && !EMAIL_RE.test(t)))];
+    const msg = $('teamMsg');
+    if (!found.length){ msg.textContent = invalid.length ? `Not valid: ${invalid.join(', ')}` : 'No email addresses found in what you pasted.'; return; }
     try{
-      await setDoc(doc(db, 'members', email), { email, addedBy: me?.email || '', addedAt: serverTimestamp() });
-      teamEmail.value = ''; setStatus?.(`Added ${email} to the team.`); renderTeam();
-    }catch(err){ console.error(err); alert('Could not add that member. Only the admin can change the team.'); }
+      const snap = await getDocs(collection(db, 'members'));
+      const have = new Set(); snap.forEach(d=>have.add(d.id));
+      const fresh = found.filter(e=>!have.has(e));
+      await Promise.all(fresh.map(email=>setDoc(doc(db, 'members', email), { email, addedBy: me?.email || '', addedAt: serverTimestamp() })));
+      const parts = [];
+      if (fresh.length) parts.push(`Added ${fresh.length}: ${fresh.join(', ')}`);
+      if (found.length - fresh.length) parts.push(`${found.length - fresh.length} already on the team`);
+      if (invalid.length) parts.push(`not valid (skipped): ${invalid.join(', ')}`);
+      msg.textContent = parts.join(' · ');
+      teamEmail.value = ''; setStatus?.(fresh.length ? `Added ${fresh.length} team member${fresh.length>1?'s':''}.` : 'No new team members.');
+      renderTeam();
+    }catch(err){ console.error(err); msg.textContent = 'Could not add members. Only the admin can change the team.'; }
   }
   teamAdd?.addEventListener('click', addMember);
-  teamEmail?.addEventListener('keydown', (e)=>{ if (e.key === 'Enter'){ e.preventDefault(); addMember(); } });
+  teamEmail?.addEventListener('keydown', (e)=>{ if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)){ e.preventDefault(); addMember(); } });
   teamList?.addEventListener('click', async (e)=>{
     const email = e.target?.dataset?.email;
     if (!email || !e.target.classList.contains('rmMember')) return;
