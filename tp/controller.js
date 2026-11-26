@@ -1,5 +1,6 @@
 // Mobile / tablet / laptop CONTROLLER: runs a prompter session that another device (the prompter screen) follows.
 import { buildParagraphs, layout, maxPos, positionAt, newCode, fmtCode, Clock, esc, loadUI, DEFAULT_SETTINGS, SESSION_TTL_MS, MAX_TEXT } from './core.js';
+import qrcode from './qrcode.mjs';   // QR generator (MIT, vendored — no network needed)
 import { createCloud, db, doc, onSnapshot, updateDoc, setDoc, deleteDoc, getDoc, serverTimestamp } from './cloud.js';
 
 const $ = (id)=>document.getElementById(id);
@@ -262,6 +263,10 @@ $('libList').addEventListener('click', async (e)=>{
 });
 
 // ============ session sheet ============
+function qrSvg(text){
+  try{ const q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 4, margin: 4, scalable: true, alt: 'QR code that opens the prompter screen' }); }
+  catch(e){ console.warn('QR failed', e); return ''; }
+}
 const displayUrl = ()=> new URL('display.html', location.href).href;
 function updateChip(){
   const chip = $('sessChip');
@@ -284,7 +289,8 @@ function renderSession(){
   body.innerHTML = `<div class="code">${fmtCode(code)}</div>
     <div class="status"><span class="dot ${ok ? 'on' : ''}"></span>${ok ? 'Prompter screen connected' : 'Waiting for the prompter screen…'}</div>
     ${ok && dispInfo ? `<div class="muted" style="text-align:center">${dispInfo.w}×${dispInfo.h}${dispInfo.fs ? ' · fullscreen' : ''}</div>` : ''}
-    <p class="muted">On the other device open <b>${esc(displayUrl())}</b> and enter the code — or send it this link:</p>
+    <div class="qr">${qrSvg(link)}</div>
+    <p class="muted" style="text-align:center">Scan with the other device's camera to open the prompter screen already joined — or open <b>${esc(displayUrl())}</b> and enter the code, or send this link:</p>
     <input type="text" id="sLink" readonly value="${esc(link)}">
     <div class="rowbtns"><button id="sCopy">Copy link</button>${navigator.share ? '<button id="sShare">Share…</button>' : ''}</div>
     <button class="danger" id="sEnd">End session</button>`;
