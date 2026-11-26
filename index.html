@@ -8,7 +8,10 @@
   :root{
     --fontSize: 64px;        /* fixed px font size */
     --colWidthPx: 1000px;    /* fixed content width */
-    --padTBpx: 0px;          /* computed from viewer height */
+    --padTBpx: 0px;          /* (unused) */
+  --scale: 1;              /* fit-to-window scale (text + column shrink together; wrapping never changes) */
+  --padTopPx: 0px;         /* = guide offset: first line starts on the eye line */
+  --padBotPx: 0px;         /* lets the last line scroll up to the eye line */
     --guideY: 35%;
     --labelColEm: 2.2em;     /* gutter for A–Z */
     --labelColor: #64b5f6;
@@ -47,14 +50,16 @@
   .stage{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;border-top:1px solid #222}
   .viewer{position:relative;overflow:auto;flex:1;min-height:0}
   .content{
-    font-size:var(--fontSize);
+    font-size:calc(var(--fontSize) * var(--scale));
     line-height:1.2;
-    padding:var(--padTBpx) 0 calc(var(--padTBpx) + 60vh);  /* no side padding; extra space below so the end can scroll up to the guide */
-    width:var(--colWidthPx);
+    padding:var(--padTopPx) 0 var(--padBotPx);
+    width:calc(var(--colWidthPx) * var(--scale));
     margin:0 auto;                /* center column */
     white-space:pre-wrap;word-break:break-word
   }
   .guide{position:absolute;left:0;right:0;height:2px;background:#f44336;top:var(--guideY);opacity:.8;pointer-events:none;z-index:2}
+  .guide .grip{position:absolute;left:8px;top:-12px;height:24px;padding:0 8px;line-height:24px;font-size:11px;font-weight:700;letter-spacing:.06em;color:#fff;background:#f44336;border-radius:6px;cursor:ns-resize;pointer-events:auto;touch-action:none;user-select:none;opacity:.95;transition:opacity .3s}
+  .guide.locked .grip{cursor:not-allowed;opacity:.6}
   .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;background:#111;border:1px solid #333;border-radius:6px;padding:2px 6px}
   .mirrorX{transform:scaleX(-1)}
   .flipY{transform:scaleY(-1)}
@@ -76,6 +81,9 @@
     letter-spacing:.03em;
   }
   .content .ptext{white-space:pre-wrap}
+  .content .para:first-child{margin-top:0}   /* first line starts exactly on the eye line */
+  #content .label{cursor:pointer}
+  #content .label:hover{color:#fff}
 
   /* Load dialog */
   dialog#loadDialog{border:1px solid #333;background:#0f0f0f;color:#fff;border-radius:16px;padding:0;max-width:640px;width:90%}
@@ -99,7 +107,7 @@
         <h2 style="margin:0;">Operator</h2>
         <div class="muted small" id="instructions">
           Keys: <span class="kbd">Space</span> autoscroll · <span class="kbd">↑/↓</span> nudge ·
-          <span class="kbd">G</span> guide ·
+          <span class="kbd">G</span> guide · <span class="kbd">+</span>/<span class="kbd">−</span> speed · <span class="kbd">Home</span> top · <span class="kbd">PgUp/PgDn</span> page · click a label to jump ·
           <span class="kbd">T</span> tools · <span class="kbd">F</span> fullscreen · <span class="kbd">⌘/Ctrl+S</span> save
         </div>
       </div>
@@ -115,6 +123,7 @@
           <label class="toggle"><input id="autoscroll" type="checkbox"> Autoscroll</label>
           <label class="toggle"><input id="invertH" type="checkbox"> Mirror (Prompter only)</label>
           <label class="toggle"><input id="invertV" type="checkbox"> Flip (Prompter only)</label>
+          <label class="toggle"><input id="guideLock" type="checkbox"> Lock Guide</label>
         </div>
       </div>
     </div>
@@ -123,7 +132,7 @@
       <div class="controls" id="controls">
         <label>Font Size <span style="display:flex;gap:10px;align-items:center"><input id="fontSize" type="range" min="20" max="160" value="64"><span id="fontSizeVal">64px</span></span></label>
         <label>Column Width <span style="display:flex;gap:10px;align-items:center"><input id="colWidth" type="range" min="600" max="1600" step="10" value="1000"><span id="colWidthVal">1000px</span></span></label>
-        <label>Guide Position <span style="display:flex;gap:10px;align-items:center"><input id="guidePos" type="range" min="5" max="90" value="35"><span id="guideVal">35%</span></span></label>
+        <label>Guide Position <span style="display:flex;gap:10px;align-items:center"><input id="guidePos" type="range" min="2" max="98" step="0.5" value="35"><span id="guideVal">35%</span></span></label>
         <label>Speed <span style="display:flex;gap:10px;align-items:center"><input id="speed" type="range" min="10" max="300" step="5" value="80"><span id="speedVal">80 px/s</span></span></label>
       </div>
     </div>
@@ -145,7 +154,7 @@
 
   <!-- Full-width Operator Preview -->
   <div class="stage">
-    <div class="guide" id="guide"></div>
+    <div class="guide" id="guide"><div class="grip" id="guideGrip" title="Drag to move the eye line">⇕ EYELINE</div></div>
     <div class="viewer" id="viewer" tabindex="0" aria-label="Operator preview (scroll area)">
       <div class="content" id="content"></div>
     </div>
@@ -177,6 +186,7 @@
     padTB:0,            // % of viewer height
     guidePos:35,
     guideVisible:true,
+    guideLocked:false,
     speed:80,
     autoscroll:false,
     invertH:false,
@@ -199,6 +209,7 @@
   const invertH = $('invertH');
   const invertV = $('invertV');
   const applyBtn = $('applyScript');
+  const guideLock = $('guideLock'), grip = $('guideGrip'), stage = viewer.parentElement;
 
   const toggleUIBtn   = $('toggleUIBtn');
   const restoreUIBtn  = $('restoreUIBtn');
@@ -207,6 +218,9 @@
 
   let prompterWin = null, pingTimer = null, autosTimer = null, isRemoteScroll = false;
   let labelMap = {};
+  let scale = 1, padTopPx = 0;
+
+  function saveUI(){ try{ localStorage.setItem('tp_ui', JSON.stringify({fontSize:state.fontSize,colWidth:state.colWidth,guidePos:state.guidePos,speed:state.speed,guideVisible:state.guideVisible,guideLocked:state.guideLocked,padTB:state.padTB})); }catch{} }
 
   // 0→A … 25→Z, 26→AA, 27→BB … 51→ZZ, 52→AAA …
   function labelFor(i){ return String.fromCharCode(65 + (i % 26)).repeat(Math.floor(i / 26) + 1); }
@@ -237,11 +251,18 @@
     }
   }
 
+  // Layout shared by operator & prompter: the whole column (text + width) shrinks to fit a narrow window, so line breaks never differ.
+  // Padding = guide offset, so scroll position N always means "text at the eye line", whatever the window height.
   function updatePadTBpx(){
-    const h = viewer?.clientHeight || 0;
-    const px = h * (state.padTB/100);
-    document.documentElement.style.setProperty('--padTBpx', px + 'px');
+    if (!viewer) return;
+    scale = Math.min(1, Math.max(0.2, (viewer.offsetWidth - 24) / state.colWidth));
+    padTopPx = viewer.clientHeight * (state.guidePos/100);
+    const r = document.documentElement.style;
+    r.setProperty('--scale', scale);
+    r.setProperty('--padTopPx', padTopPx + 'px');
+    r.setProperty('--padBotPx', Math.max(0, viewer.clientHeight - padTopPx) + 'px');
   }
+  function relayout(){ const u = state.scrollTop || 0; updatePadTBpx(); if (viewer) viewer.scrollTop = u * scale; }
 
   function syncUIToggleLabel(){
     const hidden = document.body.classList.contains('ui-hidden');
@@ -250,7 +271,7 @@
   function toggleUI(){
     document.body.classList.toggle('ui-hidden');
     syncUIToggleLabel();
-    updatePadTBpx();
+    relayout();
   }
   toggleUIBtn?.addEventListener('click', toggleUI);
   restoreUIBtn?.addEventListener('click', toggleUI);
@@ -269,7 +290,7 @@
   fullscreenOp?.addEventListener('click', toggleFullscreen);
   document.addEventListener('fullscreenchange', ()=>{
     if (fullscreenOp) fullscreenOp.textContent = document.fullscreenElement ? 'Exit Fullscreen' : 'Fullscreen';
-    updatePadTBpx();
+    relayout();
     broadcastState();
   });
 
@@ -281,27 +302,36 @@
   --fontSize:${state.fontSize}px;
   --colWidthPx:${state.colWidth}px;
   --padTBpx:0px;
+  --scale:1;
+  --padTopPx:0px;
+  --padBotPx:0px;
   --guideY:${state.guidePos}%;
   --labelColEm:2.2em;
   --labelColor:#64b5f6;
 }
 html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-.viewer{position:relative;height:100%;overflow:auto;border-top:1px solid #222}
+.viewer{position:relative;height:100%;overflow:auto;scrollbar-width:none}
+.viewer::-webkit-scrollbar{display:none}
 .content{
-  font-size:var(--fontSize);
+  font-size:calc(var(--fontSize) * var(--scale));
   line-height:1.2;
-  padding:var(--padTBpx) 0 calc(var(--padTBpx) + 60vh);
-  width:var(--colWidthPx);
+  padding:var(--padTopPx) 0 var(--padBotPx);
+  width:calc(var(--colWidthPx) * var(--scale));
   margin:0 auto;
   white-space:pre-wrap;word-break:break-word
 }
 .guide{position:fixed;top:var(--guideY);left:0;right:0;height:2px;background:#f44336;opacity:.8;pointer-events:none;z-index:2}
+.guide .grip{position:absolute;left:8px;top:-12px;height:24px;padding:0 8px;line-height:24px;font-size:11px;font-weight:700;letter-spacing:.06em;color:#fff;background:#f44336;border-radius:6px;cursor:ns-resize;pointer-events:auto;touch-action:none;user-select:none;transition:opacity .3s}
+.guide.locked .grip{cursor:not-allowed;opacity:.6}
 .mirrorX{transform:scaleX(-1)}
 .flipY{transform:scaleY(-1)}
 .content .para{display:grid;grid-template-columns: var(--labelColEm) 1fr;column-gap:.6em;align-items:baseline;margin:.35em 0}
 .content .label{color:var(--labelColor);text-align:right;user-select:none;font-weight:600;letter-spacing:.03em}
 .content .ptext{white-space:pre-wrap}
-.fs-fab{position:fixed;top:10px;right:10px;z-index:9999}
+.content .para:first-child{margin-top:0}
+.fs-fab{position:fixed;top:10px;right:10px;z-index:9999;transition:opacity .3s}
+body.idle, body.idle *{cursor:none !important}
+body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
 .fs-pill{border-radius:999px;padding:8px 12px;border:1px solid #333;background:#121212;color:#fff}
 
 /* One-tap FS overlay */
@@ -313,7 +343,7 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
 #fsOverlay .inner strong{display:block;margin-bottom:8px}
 </style>
 </head><body>
-  <div class="guide" id="g"></div>
+  <div class="guide" id="g"><div class="grip" id="gGrip">⇕ EYELINE</div></div>
   <div class="viewer" id="v">
     <div class="content" id="c"></div>
   </div>
@@ -326,15 +356,22 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
   const viewer=document.getElementById('v'), content=document.getElementById('c'), guide=document.getElementById('g');
   const fsBtn=document.getElementById('fsBtnP');
   const fsOverlay=document.getElementById('fsOverlay');
-  let state={text:'',fontSize:64,colWidth:1000,padTB:0,guidePos:35,guideVisible:true,speed:80,autoscroll:false,invertH:false,invertV:false,scrollTop:0};
+  let state={text:'',fontSize:64,colWidth:1000,padTB:0,guidePos:35,guideVisible:true,guideLocked:false,speed:80,autoscroll:false,invertH:false,invertV:false,scrollTop:0};
+  const grip=document.getElementById('gGrip');
+  let scale = 1;
   let labelMap = {};
   let fsArmed = false;
 
+  // Same layout rules as the operator window: column shrinks (text + width) to fit; scroll N = text on the eye line
   function updatePadTBpx(){
-    const h = viewer?.clientHeight || 0;
-    const px = h * (state.padTB/100);
-    document.documentElement.style.setProperty('--padTBpx', px + 'px');
+    scale = Math.min(1, Math.max(0.2, viewer.offsetWidth / state.colWidth));
+    const gp = viewer.clientHeight * (state.guidePos/100);
+    const r = document.documentElement.style;
+    r.setProperty('--scale', scale);
+    r.setProperty('--padTopPx', gp + 'px');
+    r.setProperty('--padBotPx', Math.max(0, viewer.clientHeight - gp) + 'px');
   }
+  function relayout(){ const u = viewer.scrollTop / (scale || 1); updatePadTBpx(); viewer.scrollTop = u * scale; }
   function rebuildLabelMap(){
     labelMap = {};
     content.querySelectorAll('.para[data-label]').forEach(el=>{
@@ -351,18 +388,12 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
     content.classList.toggle('mirrorX',!!state.invertH);
     content.classList.toggle('flipY',!!state.invertV);
     if (d && typeof d.html==='string'){ content.innerHTML = d.html; }
+    guide.classList.toggle('locked', !!state.guideLocked);
+    grip.textContent = (state.guideLocked ? '🔒' : '⇕') + ' EYELINE';
     updatePadTBpx();
     rebuildLabelMap();
-    viewer.scrollTop = state.scrollTop || 0;   // Operator decides scroll
+    viewer.scrollTop = (state.scrollTop || 0) * scale;   // Operator decides scroll (unscaled units)
   }
-  function jumpToLabel(letter){
-    const L=(letter||'').toUpperCase();
-    const el=labelMap[L]; if(!el) return;
-    const guidePx=viewer.clientHeight*(state.guidePos/100);
-    const target=Math.max(0, el.offsetTop - guidePx);
-    viewer.scrollTop=target;
-  }
-
   function hasFS(){ return !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement); }
   async function enterFS(){
     const el = document.documentElement;
@@ -395,8 +426,9 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
     fsBtn.textContent = on ? 'Exit Fullscreen' : 'Fullscreen';
     fsOverlay.style.display = 'none';
     fsArmed = false;
+    document.body.classList.toggle('fs', on);
     (window.opener||window.parent).postMessage({type:'prompter-fs', on}, '*');
-    updatePadTBpx();
+    relayout();
   });
 
   // One-tap arming: operator asks us to arm, next click enters FS
@@ -415,12 +447,25 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
   window.addEventListener('message',(e)=>{ const d=e.data||{};
     if(d.type==='ping'){ (window.opener||window.parent).postMessage({type:'pong'},'*'); }
     else if(d.type==='state'){ apply(d); }
-    else if(d.type==='scroll'){ viewer.scrollTop = d.scrollTop || 0; }
-    else if(d.type==='jump'){ jumpToLabel(d.label); }
+    else if(d.type==='scroll'){ viewer.scrollTop = (d.scrollTop || 0) * scale; }
+    else if(d.type==='guidePos'){ state.guidePos = d.guidePos; if(!gDragging) document.documentElement.style.setProperty('--guideY', state.guidePos + '%'); updatePadTBpx(); viewer.scrollTop = (d.scrollTop || 0) * scale; }
     else if(d.type==='toggleFS'){ toggleFS(); }
     else if(d.type==='armFS'){ armFS(); }
   });
-  window.addEventListener('resize', updatePadTBpx);
+  window.addEventListener('resize', relayout);
+
+  // Eye line: drag the red tab to move it (operator stays authoritative and saves it)
+  let gDragging = false, gGrab = 0;
+  grip.addEventListener('pointerdown',(e)=>{ if(state.guideLocked) return; gDragging = true; gGrab = e.clientY - guide.getBoundingClientRect().top; grip.setPointerCapture(e.pointerId); e.preventDefault(); });
+  grip.addEventListener('pointermove',(e)=>{ if(!gDragging) return; const p = Math.round(Math.min(98, Math.max(2, (e.clientY - gGrab) / window.innerHeight * 100)) * 10) / 10; document.documentElement.style.setProperty('--guideY', p + '%'); (window.opener||window.parent).postMessage({type:'guideDrag', guidePos:p},'*'); });
+  const gEnd = ()=>{ if(!gDragging) return; gDragging = false; (window.opener||window.parent).postMessage({type:'guideDragEnd'},'*'); };
+  grip.addEventListener('pointerup', gEnd); grip.addEventListener('pointercancel', gEnd);
+
+  // Hide cursor (and, in fullscreen, the buttons) after a moment without mouse movement
+  let idleT = null;
+  function wake(){ document.body.classList.remove('idle'); clearTimeout(idleT); idleT = setTimeout(()=>document.body.classList.add('idle'), 2500); }
+  document.addEventListener('mousemove', wake); wake();
+
   (window.opener||window.parent).postMessage({type:'ready'},'*');
 
   document.addEventListener('keydown',(e)=>{
@@ -479,13 +524,22 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
   /* ---- Autoscroll: Operator is the only scroller ---- */
   function stopOpAuto(){ if(autosTimer){ cancelAnimationFrame(autosTimer); autosTimer=null; } }
   function stepOp(){ const sp = state.speed || 0; let last = performance.now();
-    let pos = viewer.scrollTop, lastSet = pos;   // keep a float position: browsers round scrollTop, which stalls slow speeds
+    let pos = viewer.scrollTop, lastSet = pos;   // float position: browsers round scrollTop, which stalls slow speeds
     function tick(t){ const dt = (t - last) / 1000; last = t;
       if (Math.abs(viewer.scrollTop - lastSet) > 1.5) pos = viewer.scrollTop;   // user scrolled manually: follow them
       pos += sp * dt;
+      const max = viewer.scrollHeight - viewer.clientHeight;
+      if (pos >= max){   // end of script: stop and untick
+        viewer.scrollTop = max; state.scrollTop = viewer.scrollTop / scale;
+        send({type:'scroll', scrollTop: state.scrollTop});
+        state.autoscroll = false; autosTimer = null;
+        render(); broadcastState();
+        if (status) status.textContent = 'End of script — autoscroll stopped.';
+        return;
+      }
       viewer.scrollTop = pos; lastSet = viewer.scrollTop;
-      state.scrollTop = pos;
-      send({type:'scroll', scrollTop: pos});   // prompter mirrors this
+      state.scrollTop = pos / scale;
+      send({type:'scroll', scrollTop: state.scrollTop});   // prompter mirrors this (unscaled units)
       autosTimer = requestAnimationFrame(tick);
     }
     autosTimer = requestAnimationFrame(tick);
@@ -501,11 +555,13 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
     document.documentElement.style.setProperty('--guideY', state.guidePos + '%');
     if (guide) guide.style.display = state.guideVisible ? 'block' : 'none';
     if (content) content.classList.remove('mirrorX','flipY'); // operator stays unflipped
-    isRemoteScroll = true; if (viewer) viewer.scrollTop = state.scrollTop || 0; isRemoteScroll = false;
 
     if (fontSize){ fontSize.value = state.fontSize; fontSizeVal.textContent = state.fontSize + 'px'; }
     if (colWidth){ colWidth.value = state.colWidth; colWidthVal.textContent = state.colWidth + 'px'; }
-    if (guidePos){ guidePos.value = state.guidePos; guideVal.textContent = state.guidePos + '%'; }
+    if (guidePos){ guidePos.value = state.guidePos; guideVal.textContent = state.guidePos + '%'; guidePos.disabled = !!state.guideLocked; }
+    if (guideLock) guideLock.checked = !!state.guideLocked;
+    if (guide) guide.classList.toggle('locked', !!state.guideLocked);
+    if (grip) grip.textContent = (state.guideLocked ? '🔒' : '⇕') + ' EYELINE';
     if (speed){ speed.value = state.speed; speedVal.textContent = state.speed + ' px/s'; }
     if (showGuide) showGuide.checked = !!state.guideVisible;
     if (autoscroll) autoscroll.checked = !!state.autoscroll;
@@ -514,6 +570,7 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
 
     buildParagraphs(state.text, content);
     updatePadTBpx();
+    if (viewer) viewer.scrollTop = (state.scrollTop || 0) * scale;
   }
 
   function send(msg){ if (prompterWin && !prompterWin.closed){ prompterWin.postMessage(msg, '*'); } }
@@ -526,12 +583,37 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
     const L = (letter||'').toUpperCase();
     const el = labelMap[L];
     if (!el || !viewer) return;
-    const guidePx = viewer.clientHeight * (state.guidePos/100);
-    const target = Math.max(0, el.offsetTop - guidePx);
-    viewer.scrollTop = target;
-    state.scrollTop = viewer.scrollTop;
-    send({type:'jump', label: L});
+    viewer.scrollTop = Math.max(0, el.offsetTop - padTopPx);   // paragraph top lands on the eye line
+    state.scrollTop = viewer.scrollTop / scale;
+    send({type:'scroll', scrollTop: state.scrollTop});
   }
+  content?.addEventListener('click', (e)=>{
+    const lbl = e.target.closest && e.target.closest('.label');
+    if (lbl && lbl.textContent) jumpToLabel(lbl.textContent);
+  });
+
+  // ---- Eye line: draggable, lockable, remembered ----
+  function setGuidePos(p){
+    p = Math.min(98, Math.max(2, Math.round(p * 10) / 10));
+    const oldPad = padTopPx;
+    state.guidePos = p;
+    document.documentElement.style.setProperty('--guideY', p + '%');
+    updatePadTBpx();
+    viewer.scrollTop = Math.max(0, viewer.scrollTop + (padTopPx - oldPad));   // text stays put on screen while the line moves
+    state.scrollTop = viewer.scrollTop / scale;
+    if (guidePos){ guidePos.value = p; guideVal.textContent = p + '%'; }
+    send({type:'guidePos', guidePos: p, scrollTop: state.scrollTop});
+  }
+  guidePos?.addEventListener('input', ()=>setGuidePos(+guidePos.value));
+  guidePos?.addEventListener('change', ()=>{ saveUI(); broadcastState(); });
+  guideLock?.addEventListener('change', ()=>{ state.guideLocked = !!guideLock.checked; render(); broadcastState(); saveUI(); });
+  (function(){
+    let dragging = false, grab = 0;
+    grip?.addEventListener('pointerdown', (e)=>{ if (state.guideLocked) return; dragging = true; grab = e.clientY - guide.getBoundingClientRect().top; grip.setPointerCapture(e.pointerId); e.preventDefault(); });
+    grip?.addEventListener('pointermove', (e)=>{ if (!dragging) return; const r = stage.getBoundingClientRect(); setGuidePos((e.clientY - grab - r.top) / r.height * 100); });
+    const end = ()=>{ if (!dragging) return; dragging = false; saveUI(); broadcastState(); };
+    grip?.addEventListener('pointerup', end); grip?.addEventListener('pointercancel', end);
+  })();
 
   document.getElementById('applyScript')?.addEventListener('click', ()=>{
     state.text = scriptBox?.value || '';
@@ -561,27 +643,32 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
   }
   window.teleprompter = { loadText };
 
-  [fontSize,colWidth,guidePos,speed].forEach(inp=>{
+  [fontSize,colWidth,speed].forEach(inp=>{
     inp?.addEventListener('input', ()=>{
       if (!inp) return;
       if (inp.id==='fontSize') state.fontSize = +inp.value;
       else if (inp.id==='colWidth') state.colWidth = +inp.value;
-      else if (inp.id==='guidePos') state.guidePos = +inp.value;
       else state.speed = +inp.value;
 
       render(); broadcastState();
-      try{ localStorage.setItem('tp_ui', JSON.stringify({fontSize:state.fontSize,colWidth:state.colWidth,guidePos:state.guidePos,speed:state.speed,guideVisible:state.guideVisible,padTB:state.padTB})); }catch{}
+      saveUI();
       if (inp.id==='speed') manageAuto();
     });
   });
-  showGuide?.addEventListener('change', ()=>{ state.guideVisible = !!showGuide.checked; render(); broadcastState(); try{ localStorage.setItem('tp_ui', JSON.stringify({fontSize:state.fontSize,colWidth:state.colWidth,guidePos:state.guidePos,speed:state.speed,guideVisible:state.guideVisible,padTB:state.padTB})); }catch{} });
+  showGuide?.addEventListener('change', ()=>{ state.guideVisible = !!showGuide.checked; render(); broadcastState(); saveUI(); });
   autoscroll?.addEventListener('change', ()=>{ state.autoscroll = !!autoscroll.checked; render(); broadcastState(); manageAuto(); });
   invertH?.addEventListener('change', ()=>{ state.invertH = !!invertH.checked; render(); broadcastState(); });
   invertV?.addEventListener('change', ()=>{ state.invertV = !!invertV.checked; render(); broadcastState(); });
 
-  viewer?.addEventListener('scroll', ()=>{ if(isRemoteScroll) return; state.scrollTop = viewer.scrollTop; send({type:'scroll', scrollTop: state.scrollTop}); }, {passive:true});
+  viewer?.addEventListener('scroll', ()=>{ if(isRemoteScroll) return; state.scrollTop = viewer.scrollTop / scale; send({type:'scroll', scrollTop: state.scrollTop}); }, {passive:true});
 
-  function scrollBy(amount){ if (!viewer) return; viewer.scrollTop = Math.max(0, viewer.scrollTop + amount); state.scrollTop = viewer.scrollTop; send({type:'scroll', scrollTop: state.scrollTop}); }
+  function scrollBy(amount){ if (!viewer) return; viewer.scrollTop = Math.max(0, viewer.scrollTop + amount); state.scrollTop = viewer.scrollTop / scale; send({type:'scroll', scrollTop: state.scrollTop}); }
+
+  function bumpSpeed(d){
+    state.speed = Math.min(300, Math.max(10, (state.speed || 0) + d));
+    render(); broadcastState(); saveUI(); if (status) status.textContent = 'Speed ' + state.speed + ' px/s';
+    if (state.autoscroll) manageAuto();
+  }
 
   document.addEventListener('keydown', (e)=>{
     const key = e.key;
@@ -597,16 +684,22 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
     // Typing in the script box (or any text field) must behave normally: space, letters, arrows, etc.
     if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
 
-    if (['ArrowUp','ArrowDown',' ','Spacebar','g','G','t','T','f','F'].includes(key)) e.preventDefault();
+    if (['ArrowUp','ArrowDown',' ','Spacebar','g','G','t','T','f','F','+','=','-','_','[',']','Home','End','PageUp','PageDown'].includes(key)) e.preventDefault();
     if (key==='ArrowUp') scrollBy(-60);
     else if (key==='ArrowDown' || key==='Down') scrollBy(60);
     else if (key===' ' || key==='Spacebar'){ if (autoscroll){ autoscroll.checked = !autoscroll.checked; state.autoscroll = autoscroll.checked; render(); broadcastState(); manageAuto(); } }
     else if (key==='g' || key==='G'){ if (showGuide){ showGuide.checked = !showGuide.checked; state.guideVisible = showGuide.checked; render(); broadcastState(); } }
     else if (key==='t' || key==='T'){ toggleUI(); }
     else if (key==='f' || key==='F'){ toggleFullscreen(); }
+    else if (key==='+' || key==='=' || key===']'){ bumpSpeed(+10); }
+    else if (key==='-' || key==='_' || key==='['){ bumpSpeed(-10); }
+    else if (key==='Home'){ scrollBy(-1e9); }
+    else if (key==='End'){ scrollBy(1e9); }
+    else if (key==='PageUp'){ scrollBy(-viewer.clientHeight * 0.9); }
+    else if (key==='PageDown'){ scrollBy(viewer.clientHeight * 0.9); }
   });
 
-  window.addEventListener('resize', ()=>{ updatePadTBpx(); broadcastState(); });
+  window.addEventListener('resize', ()=>{ relayout(); broadcastState(); });
 
   // Listen for child messages (fullscreen state updates, ready)
   window.addEventListener('message', (e)=>{
@@ -618,6 +711,10 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
       setPrompterFSLabel(!!d.on);
     } else if (d.type === 'ready'){
       broadcastState();
+    } else if (d.type === 'guideDrag'){
+      if (!state.guideLocked) setGuidePos(d.guidePos);
+    } else if (d.type === 'guideDragEnd'){
+      saveUI(); broadcastState();
     }
   });
 
@@ -631,9 +728,12 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
       if (typeof u.guidePos==='number') state.guidePos=u.guidePos;
       if (typeof u.speed==='number') state.speed=u.speed;
       if (typeof u.guideVisible==='boolean') state.guideVisible=u.guideVisible;
+      if (typeof u.guideLocked==='boolean') state.guideLocked=u.guideLocked;
       if (typeof u.padTB==='number') state.padTB=u.padTB;
     }
   }catch{}
+  // Restore the last script text after a refresh
+  try{ const t = localStorage.getItem('tp_text'); if (t){ state.text = t; if (scriptBox) scriptBox.value = t; } }catch{}
 
   render(); manageAuto(); syncUIToggleLabel();
 })();
@@ -680,6 +780,9 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
   // Track current doc to allow update vs create
   let currentDocId = null;
   let currentName  = '';
+  let savedText    = '';   // editor text as of the last save/load, to tell whether there are unsaved changes
+  const rememberMeta = ()=>{ try{ localStorage.setItem('tp_doc_meta', JSON.stringify({id: currentDocId, name: currentName, savedText})); }catch{} };
+  try{ const m = JSON.parse(localStorage.getItem('tp_doc_meta') || 'null'); if (m && m.id){ currentDocId = m.id; currentName = m.name || ''; savedText = typeof m.savedText === 'string' ? m.savedText : ''; } }catch{}
 
   const esc = (v)=>String(v).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -698,7 +801,8 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
       });
       currentDocId = ref.id; currentName = trimmed;
       setStatus?.(`Saved “${trimmed}” as a new script.`);
-      try{ localStorage.setItem('tp_doc_meta', JSON.stringify({id: currentDocId, name: currentName})); localStorage.setItem('tp_text', text); }catch{}
+      savedText = text; rememberMeta();
+      try{ localStorage.setItem('tp_text', text); }catch{}
     }catch(err){ console.error(err); alert('Save As failed. See console for details.'); }
   }
 
@@ -730,11 +834,11 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
         });
         currentDocId = ref.id; currentName = trimmed;
         setStatus?.(`Saved “${trimmed}”.`);
-        try{ localStorage.setItem('tp_doc_meta', JSON.stringify({id: currentDocId, name: currentName})); }catch{}
       } else {
         currentName = trimmed;
         setStatus?.(`Updated “${trimmed}”.`);
       }
+      savedText = text; rememberMeta();
       try{ localStorage.setItem('tp_text', text); }catch{}
     }catch(err){
       console.error(err);
@@ -779,6 +883,39 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
     }
   }
 
+  // Before opening another script: keep the current one.
+  //  - it belongs to a saved script  -> autosave the changes into that script
+  //  - it was never saved (non-empty) -> ask for a name and save it (or let the user explicitly discard / cancel)
+  async function persistBeforeSwitch(){
+    const text = scriptBox?.value || '';
+    if (currentDocId){
+      if (text === savedText) return true;
+      try{
+        await updateDoc(doc(db, COLL, currentDocId), { text, updatedAt: serverTimestamp() });
+        savedText = text; rememberMeta();
+        setStatus?.(`Autosaved “${currentName}”.`);
+        return true;
+      }catch(err){
+        console.error(err);
+        return confirm(`Could not save your changes to “${currentName}”.\n\nLoad the other script anyway and lose those changes?`);
+      }
+    }
+    if (!text.trim()) return true;
+    const name = prompt("The current script hasn't been saved yet.\n\nEnter a name to save it before loading another script.\n(Click Cancel for more options.)", '');
+    if (name === null) return confirm('Discard the unsaved script and load the other one instead?');
+    const trimmed = (name || '').trim();
+    if (!trimmed){ alert('Please enter a name to save the current script. Nothing was loaded.'); return false; }
+    try{
+      const ref = await addDoc(collection(db, COLL), { name: trimmed, text, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      currentDocId = ref.id; currentName = trimmed; savedText = text; rememberMeta();
+      setStatus?.(`Saved “${trimmed}”.`);
+      return true;
+    }catch(err){
+      console.error(err);
+      return confirm('Could not save the current script.\n\nLoad the other script anyway and lose it?');
+    }
+  }
+
   // LOAD / RENAME / DUPLICATE / DELETE
   listEl?.addEventListener('click', async (e)=>{
     const id = e.target?.dataset?.id;
@@ -786,15 +923,18 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
 
     if(e.target.classList.contains('load')){
       try{
+        // Loading opens a DIFFERENT script: first keep what's in the editor (autosave to its script, or prompt to save)
+        if (!(await persistBeforeSwitch())) return;
         const ds = await getDoc(doc(db, COLL, id));
         if (ds.exists()){
           const data = ds.data();
           currentDocId = id; currentName = data.name || '';
           window.teleprompter.loadText(data.text || '');
+          savedText = scriptBox?.value || '';
+          rememberMeta();
           setStatus?.(`Loaded “${currentName || '(untitled)'}”.`);
-          try{ localStorage.setItem('tp_doc_meta', JSON.stringify({id: currentDocId, name: currentName})); }catch{}
           dlg?.close();
-        }
+        } else { alert('That script no longer exists.'); showList(); }
       }catch(err){ console.error(err); alert('Load failed.'); }
     }
 
@@ -808,7 +948,7 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
       if (!trimmed) return alert('Please enter a valid name.');
       try{
         await updateDoc(doc(db, COLL, id), { name: trimmed, updatedAt: serverTimestamp() });
-        if (currentDocId === id) { currentName = trimmed; try{ localStorage.setItem('tp_doc_meta', JSON.stringify({id: currentDocId, name: currentName})); }catch{} }
+        if (currentDocId === id) { currentName = trimmed; rememberMeta(); }
         showList();
       }catch(err){ console.error(err); alert('Rename failed.'); }
     }
@@ -832,11 +972,7 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
       if(!confirm('Delete this saved script?')) return;
       try{
         await deleteDoc(doc(db, COLL, id));
-        const meta = localStorage.getItem('tp_doc_meta');
-        if (meta){
-          const m = JSON.parse(meta);
-          if (m.id === id){ localStorage.removeItem('tp_doc_meta'); }
-        }
+        if (currentDocId === id){ currentDocId = null; currentName = ''; savedText = ''; try{ localStorage.removeItem('tp_doc_meta'); }catch{} }
         showList();
       }catch(err){ console.error(err); alert('Delete failed.'); }
     }
