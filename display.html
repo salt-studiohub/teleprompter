@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black" />
+<meta name="theme-color" content="#000000" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icon-180.png" />
+<title>Prompter screen</title>
+<link rel="stylesheet" href="tp/core.css" />
+<style>
+  body{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+  .panel{margin:auto;max-width:420px;padding:24px;text-align:center}
+  .panel h1{font-size:26px;margin:0 0 8px}
+  .panel p{opacity:.8;line-height:1.5}
+  .panel input{width:100%;font-size:30px;letter-spacing:.12em;text-align:center;text-transform:uppercase;background:#0a0a0a;color:#fff;border:1px solid #333;border-radius:14px;padding:14px;margin:12px 0}
+  .panel button, #hud button{background:#1f1f1f;color:#fff;border:1px solid #333;border-radius:12px;padding:12px 18px;font-size:16px;cursor:pointer}
+  .panel button.primary{background:#2a7fff;border-color:#2a7fff;width:100%}
+  .panel a{color:#9db8ff}
+  #msg{position:fixed;inset:0;pointer-events:none;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;font-size:22px;opacity:.85;z-index:5;flex-direction:column;gap:14px}
+  #msg button{pointer-events:auto;background:#1f1f1f;color:#fff;border:1px solid #333;border-radius:12px;padding:12px 18px;font-size:16px}
+  #msg:empty{display:none}
+  #hud{position:fixed;top:max(10px,env(safe-area-inset-top));right:10px;z-index:20;display:flex;gap:8px;transition:opacity .3s}
+  #hud button{padding:8px 12px;font-size:14px;border-radius:999px;background:#121212}
+  #warn{position:fixed;left:50%;top:max(12px,env(safe-area-inset-top));transform:translateX(-50%);z-index:30;background:#b71c1c;color:#fff;border:1px solid #ff8a80;border-radius:999px;padding:10px 18px;font-size:16px;font-weight:600;max-width:92vw;text-align:center}
+  #warn.ok{background:#1b5e20;border-color:#69f0ae}
+  #warn[hidden]{display:none}
+  body.idle{cursor:none}
+  body.idle #hud, body.idle .grip{opacity:0;pointer-events:none}
+</style>
+</head>
+<body>
+  <div class="panel" id="join" hidden>
+    <h1>Prompter screen</h1>
+    <p>Enter the code shown on the controller.</p>
+    <input id="codeInput" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="9" placeholder="ABCD-EFGH" />
+    <button id="joinBtn" class="primary">Join</button>
+    <p><a href="mobile.html">← Back</a></p>
+  </div>
+
+  <div class="stage" id="stage" hidden>
+    <div class="guide" id="guide"><div class="grip" id="grip">⇕ EYELINE</div></div>
+    <div class="viewer noscroll" id="viewer"><div class="content" id="content"></div></div>
+  </div>
+
+  <div id="msg"></div>
+  <div id="warn" hidden></div>
+  <div id="hud" hidden>
+    <button id="fsBtn">Fullscreen</button>
+    <button id="leaveBtn">Leave</button>
+  </div>
+
+<script type="module">
+  import { firebaseConfig, buildParagraphs, layout, maxPos, positionAt, normCode, fmtCode, Clock, DEFAULT_SETTINGS } from './tp/core.js';
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+  import { getFirestore, doc, onSnapshot, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+
+  const $ = (id)=>document.getElementById(id);
+  const viewer = $('viewer'), content = $('content'), stage = $('stage'), guide = $('guide'), grip = $('grip');
+  const msg = $('msg'), join = $('join'), hud = $('hud');
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const clock = new Clock();
+
+  const S = { ...DEFAULT_SETTINGS, text:'', playing:false, pos:0, anchorMs:0, ready:false };
+  let ctlSeenMs = 0, stale = false, frozenU = 0, warnT = null;
+  const STALE_MS = 9000;   // controller silent this long while playing -> hold position
+  const FRESH_MS = 6000;   // ...and resume once it has been heard from within this long
+  let ref = null, code = '', unsub = null, hbTimer = null, scale = 1, lastText = null, dragging = false, dragP = 0, wakeLock = null;
+  const setMsg = (html)=>{ msg.innerHTML = html || ''; };
+
+  // ---------- join ----------
+  function showJoin(note){
+    if (unsub){ unsub(); unsub = null; } clearInterval(hbTimer);
+    stage.hidden = true; hud.hidden = true; S.ready = false; setMsg('');
+    join.hidden = false; $('codeInput').value = ''; $('codeInput').focus();
+    if (note) setMsg(`<div>${note}</div>`);
+  }
+  function start(c){
+    code = normCode(c);
+    if (code.length !== 8){ showJoin('That code should have 8 letters/numbers.'); return; }
+    try{ localStorage.setItem('tp_display_code', code); }catch{}
+    join.hidden = true; stage.hidden = false; hud.hidden = false;
+    setMsg('Connecting…');
+    requestWake();
+    ref = doc(db, 'sessions', code);
+    if (unsub) unsub();
+    unsub = onSnapshot(ref, onSnap, (err)=>{
+      console.error(err);
+      stage.hidden = true; hud.hidden = true;
+      setMsg(`<div>${err && err.code === 'permission-denied' ? 'That session was not found, has ended, or has expired. Check the code on the controller.' : 'Could not connect. Check your internet connection.'}</div><button id="retryBtn">Enter a different code</button>`);
+      $('retryBtn')?.addEventListener('click', ()=>{ setMsg(''); showJoin(); });
+    });
+  }
+  $('joinBtn').addEventListener('click', ()=>start($('codeInput').value));
+  $('codeInput').addEventListener('keydown', (e)=>{ if (e.key === 'Enter') start($('codeInput').value); });
+  $('leaveBtn').addEventListener('click', ()=>{ try{ localStorage.removeItem('tp_display_code'); }catch{} history.replaceState(null, '', location.pathname); showJoin(); });
+
+  // ---------- session state from the controller ----------
+  function onSnap(snap){
+    if (!snap.exists()){
+      S.ready = false; stage.hidden = true; hud.hidden = false;
+      setMsg('<div>The session has ended.</div><button id="retryBtn">Enter a different code</button>');
+      $('retryBtn')?.addEventListener('click', ()=>{ setMsg(''); showJoin(); });
+      return;
+    }
+    const d = snap.data({ serverTimestamps:'estimate' });
+    for (const k of Object.keys(DEFAULT_SETTINGS)) if (d[k] !== undefined) S[k] = d[k];
+    S.playing = !!d.playing; S.pos = d.pos || 0; S.anchorMs = d.anchorMs || 0; S.speed = d.speed ?? S.speed;
+    if (d.text !== lastText){ lastText = d.text || ''; S.text = lastText; buildParagraphs(S.text, content); }
+    // clock sync: our own heartbeat write has now been stamped by the server
+    const ctl = d.ctl; ctlSeenMs = ctl && ctl.seen && ctl.seen.toMillis ? ctl.seen.toMillis() : 0;
+    const my = d.disp;
+    if (!snap.metadata.hasPendingWrites && my && my.pingId && my.ping && my.ping.toMillis) clock.resolve(my.pingId, my.ping.toMillis());
+    apply();
+    S.ready = true;
+    stage.hidden = false; hud.hidden = false;
+    setMsg(S.text.trim() ? '' : '<div>Connected.<br><span style="font-size:16px;opacity:.7">Waiting for the controller to send a script…</span></div>');
+    if (!hbTimer){ beat(); setTimeout(beat, 500); setTimeout(beat, 1200); hbTimer = setInterval(beat, 10000); }
+  }
+  function apply(){
+    guide.classList.toggle('hidden', !S.guideVisible);
+    guide.classList.toggle('locked', !!S.guideLocked);
+    stage.classList.toggle('flipY', !!S.flip);
+    content.classList.toggle('mirrorX', !!S.mirror);
+    viewer.classList.add('noscroll');
+    scale = layout(viewer, S).scale;
+    if (dragging) document.documentElement.style.setProperty('--guideY', dragP + '%');   // keep the line under the finger
+  }
+  window.addEventListener('resize', ()=>{ if (S.ready) apply(); });
+
+  // ---------- scrolling: computed locally from (pos, anchor, speed) ----------
+  function frame(){
+    if (S.ready && !stage.hidden){
+      const mx = maxPos(viewer, scale);
+      const synced = clock.samples.length > 0;                  // judge staleness only once our clock has been checked against the server
+      const lag = ctlSeenMs && synced ? clock.now() - ctlSeenMs : 0;      // how long since the controller (or our link to it) was last confirmed alive
+      if (!stale && S.playing && ctlSeenMs && lag > STALE_MS){
+        stale = true; frozenU = Math.min(positionAt(S, clock.now()), mx);
+        showWarn('⚠ Connection lost — holding position', false);
+      } else if (stale && (!S.playing || lag < FRESH_MS)){
+        stale = false; showWarn('Reconnected', true, 2500);
+      }
+      const u = stale ? frozenU : Math.min(positionAt(S, clock.now()), mx);
+      viewer.scrollTop = u * scale;
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  function showWarn(text, good, ms){
+    const w = $('warn'); w.textContent = text; w.classList.toggle('ok', !!good); w.hidden = false;
+    clearTimeout(warnT); if (ms) warnT = setTimeout(()=>{ w.hidden = true; }, ms);
+  }
+
+  // ---------- heartbeat (also keeps the clocks in step) ----------
+  async function beat(){
+    if (!ref) return;
+    const id = clock.nextPing();
+    try{
+      await updateDoc(ref, {
+        'disp.ping': serverTimestamp(), 'disp.pingId': id, 'disp.seen': serverTimestamp(),
+        'disp.info': { w: innerWidth, h: innerHeight, scale: +scale.toFixed(3), fs: !!fsEl() }
+      });
+    }catch(e){ console.warn('heartbeat failed', e && e.code); }
+  }
+
+  // ---------- eye line: drag the red tab; the controller saves it ----------
+  let dGrab = 0, dSeq = 0, dLast = 0;
+  const pFromY = (y)=>{ const r = stage.getBoundingClientRect(); const ry = S.flip ? (r.bottom - y) : (y - r.top); return Math.round(Math.min(98, Math.max(2, ry / r.height * 100)) * 10) / 10; };
+  function sendGuide(p, final){
+    dSeq = Date.now(); dLast = performance.now();
+    updateDoc(ref, { 'disp.guide': p, 'disp.guideSeq': dSeq, 'disp.guideFinal': !!final }).catch(()=>{});
+  }
+  grip.addEventListener('pointerdown', (e)=>{ if (S.guideLocked) return; dragging = true; grip.setPointerCapture(e.pointerId); e.preventDefault(); });
+  grip.addEventListener('pointermove', (e)=>{
+    if (!dragging) return;
+    const p = dragP = pFromY(e.clientY);
+    document.documentElement.style.setProperty('--guideY', p + '%');       // the line follows the finger; text stays put
+    if (performance.now() - dLast > 120) sendGuide(p, false);
+  });
+  const endDrag = (e)=>{ if (!dragging) return; dragging = false; sendGuide(pFromY(e.clientY), true); };
+  grip.addEventListener('pointerup', endDrag); grip.addEventListener('pointercancel', ()=>{ dragging = false; });
+
+  // ---------- fullscreen, wake lock, idle UI ----------
+  const fsEl = ()=> document.fullscreenElement || document.webkitFullscreenElement || null;
+  const fsApi = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
+  if (!fsApi) $('fsBtn').hidden = true;     // e.g. iPhone: use "Add to Home Screen" for a full-screen app instead
+  $('fsBtn').addEventListener('click', async ()=>{
+    try{
+      if (!fsEl()) await (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen).call(document.documentElement);
+      else await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    }catch(e){ console.warn(e); }
+  });
+  const fsChange = ()=>{ $('fsBtn').textContent = fsEl() ? 'Exit fullscreen' : 'Fullscreen'; setTimeout(()=>{ if (S.ready) apply(); beat(); }, 150); };
+  document.addEventListener('fullscreenchange', fsChange); document.addEventListener('webkitfullscreenchange', fsChange);
+
+  async function requestWake(){ try{ if (navigator.wakeLock) wakeLock = await navigator.wakeLock.request('screen'); }catch{} }
+  document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState === 'visible' && ref) requestWake(); });
+
+  let idleT = null;
+  const wake = ()=>{ document.body.classList.remove('idle'); clearTimeout(idleT); idleT = setTimeout(()=>document.body.classList.add('idle'), 3000); };
+  ['mousemove','pointerdown','touchstart'].forEach(ev=>document.addEventListener(ev, wake, { passive:true })); wake();
+
+  // ---------- go ----------
+  const q = new URLSearchParams(location.search).get('code');
+  const saved = (()=>{ try{ return localStorage.getItem('tp_display_code'); }catch{ return null; } })();
+  if (q) start(q); else if (saved) start(saved); else showJoin();
+</script>
+</body>
+</html>

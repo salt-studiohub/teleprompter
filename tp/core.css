@@ -1,0 +1,34 @@
+/* Shared by the mobile controller and the prompter screen (display) */
+:root{
+  --fontSize:64px; --colWidthPx:1000px; --guideY:35%;
+  --scale:1; --padTopPx:0px; --padBotPx:0px;
+  --labelColEm:2.2em; --labelColor:#64b5f6;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:#000;color:#fff;
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%}
+body{display:flex;flex-direction:column;overscroll-behavior:none}
+button{touch-action:manipulation}
+
+.stage{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.stage.flipY{transform:scaleY(-1)}
+.viewer{position:relative;overflow:auto;flex:1;min-height:0;-webkit-overflow-scrolling:touch;overscroll-behavior:none}
+.viewer.noscroll{overflow:hidden}
+.content{
+  font-size:calc(var(--fontSize) * var(--scale));
+  line-height:1.2;
+  padding:var(--padTopPx) 0 var(--padBotPx);
+  width:calc(var(--colWidthPx) * var(--scale));
+  margin:0 auto;
+  white-space:pre-wrap;word-break:break-word
+}
+.content.mirrorX{transform:scaleX(-1)}
+.content .para{display:grid;grid-template-columns:var(--labelColEm) 1fr;column-gap:.6em;align-items:baseline;margin:.35em 0}
+.content .para:first-child{margin-top:0}
+.content .label{color:var(--labelColor);text-align:right;user-select:none;-webkit-user-select:none;font-weight:600;letter-spacing:.03em}
+.content .ptext{white-space:pre-wrap}
+
+.guide{position:absolute;left:0;right:0;top:var(--guideY);height:2px;background:#f44336;opacity:.85;pointer-events:none;z-index:2}
+.guide.hidden{display:none}
+.guide .grip{position:absolute;left:8px;top:auto;bottom:3px;height:30px;padding:0 12px;line-height:30px;font-size:12px;font-weight:700;letter-spacing:.06em;color:#fff;background:#f44336;border-radius:8px;cursor:ns-resize;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;opacity:.95;transition:opacity .3s}
+.guide.locked .grip{cursor:not-allowed;opacity:.6}
