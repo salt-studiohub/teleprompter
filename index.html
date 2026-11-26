@@ -4,6 +4,13 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Teleprompter — Operator & Prompter</title>
+<script>
+  /* Remember Desktop vs Mobile per device. ?desktop=1 forces desktop; "mobile" sends this device to the mobile pages. */
+  try{
+    if (/[?&]desktop\b/.test(location.search)) localStorage.setItem('tp_mode', 'desktop');
+    else if (localStorage.getItem('tp_mode') === 'mobile') location.replace('mobile.html');
+  }catch{}
+</script>
 <style>
   :root{
     --fontSize: 64px;        /* fixed px font size */
@@ -102,7 +109,7 @@
   .team-row{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #222;border-radius:12px;padding:8px 10px;margin:6px 0;background:#0b0b0b}
 
   /* Load dialog */
-  dialog#loadDialog, dialog#teamDialog, dialog#signinDialog{border:1px solid #333;background:#0f0f0f;color:#fff;border-radius:16px;padding:0;max-width:640px;width:90%}
+  dialog#loadDialog, dialog#teamDialog, dialog#signinDialog, dialog#modeDialog{border:1px solid #333;background:#0f0f0f;color:#fff;border-radius:16px;padding:0;max-width:640px;width:90%}
   dialog::backdrop{background:rgba(0,0,0,.65)}
   .ui-pill.primary{background:#2a7fff;border-color:#2a7fff;color:#fff}
   .ui-pill.primary:hover{background:#3b8bff}
@@ -191,7 +198,7 @@
     </div>
   </div>
 
-  <footer class="app-footer">This teleprompter app was developed with the help of Claude.</footer>
+  <footer class="app-footer">This teleprompter app was developed with the help of Claude. · <a id="toMobile" href="mobile.html" style="color:#9db8ff">Switch to the mobile version</a></footer>
 
   <!-- Team dialog (admin only) -->
   <dialog id="teamDialog">
@@ -208,6 +215,18 @@
       </div>
       <div id="teamMsg" class="muted" style="margin-bottom:8px;min-height:1.2em"></div>
       <div id="teamList"></div>
+    </div>
+  </dialog>
+
+  <!-- First visit on this device: Desktop or Mobile? -->
+  <dialog id="modeDialog">
+    <div class="dlg-head"><strong>How are you using the teleprompter?</strong></div>
+    <div class="dlg-body">
+      <p class="muted" style="margin:4px 0 14px;font-size:14px;line-height:1.5">You can switch any time from the link at the bottom of the page.</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button id="modeDesktop" style="padding:14px 16px;font-size:15px;text-align:left"><b>🖥 Desktop</b><br><span class="muted">One computer: operator window plus a prompter window on a second monitor.</span></button>
+        <button id="modeMobile" style="padding:14px 16px;font-size:15px;text-align:left"><b>📱 Mobile / tablet</b><br><span class="muted">Two devices over the internet: a controller (iPad, phone or laptop) and a prompter screen.</span></button>
+      </div>
     </div>
   </dialog>
 
@@ -801,6 +820,12 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   // Close the Shortcuts dropdown when clicking elsewhere
   document.addEventListener('click', (e)=>{ const d = document.getElementById('keys'); if (d && d.open && !d.contains(e.target)) d.open = false; });
 
+  // Desktop / Mobile chooser (first visit on this device)
+  $('modeDesktop')?.addEventListener('click', ()=>{ try{ localStorage.setItem('tp_mode','desktop'); }catch{} $('modeDialog').close(); });
+  $('modeMobile')?.addEventListener('click', ()=>{ try{ localStorage.setItem('tp_mode','mobile'); }catch{} location.href = 'mobile.html'; });
+  $('toMobile')?.addEventListener('click', ()=>{ try{ localStorage.setItem('tp_mode','mobile'); }catch{} });
+  try{ if (!localStorage.getItem('tp_mode')) $('modeDialog').showModal(); }catch{}
+
   render(); manageAuto(); syncUIToggleLabel();
 })();
 </script>
@@ -904,6 +929,7 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   }
   function maybePromptSignin(){
     if (isMember) return;
+    if (document.getElementById('modeDialog')?.open) return;   // choose Desktop/Mobile first
     try{ if (sessionStorage.getItem('tp_skip_signin')) return; }catch{}
     renderSignin();
     if (signinDlg && !signinDlg.open) signinDlg.showModal();
@@ -912,6 +938,7 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   signinSkip?.addEventListener('click', ()=>{ try{ sessionStorage.setItem('tp_skip_signin', '1'); }catch{} signinDlg?.close(); });
 
   let firstAuth = true;
+  document.getElementById('modeDialog')?.addEventListener('close', ()=>{ if (!firstAuth) maybePromptSignin(); });
   onAuthStateChanged(auth, async (user)=>{
     me = user || null; await refreshRole(me); updateAuthUI();
     if (firstAuth){ firstAuth = false; maybePromptSignin(); }          // first answer from Firebase on page load
@@ -1193,6 +1220,17 @@ service cloud.firestore {
     }
     match /publicScripts/{docId} {
       allow read, write: if isMember();
+    }
+
+    // Live mobile sessions (controller <-> prompter screen). The prompter screen needs NO login:
+    // it can read a session only if it knows the 8-character code and the session hasn't expired,
+    // and it may only write the "disp" field (heartbeat + eye line). Single documents only, never listing.
+    match /sessions/{code} {
+      allow get:    if isMember() || (resource != null && resource.data.expiresAt > request.time);
+      allow create: if isMember();
+      allow update: if isMember() || (resource.data.expiresAt > request.time
+                                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['disp']));
+      allow delete: if isMember();
     }
   }
 }

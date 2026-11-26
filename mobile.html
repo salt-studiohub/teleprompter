@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black" />
+<meta name="theme-color" content="#000000" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icon-180.png" />
+<title>Teleprompter — mobile</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%;background:#000;color:#fff;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  main{max-width:520px;margin:0 auto;padding:max(24px,env(safe-area-inset-top)) 20px 32px}
+  h1{font-size:26px;margin:8px 0 6px}
+  p{opacity:.8;line-height:1.5}
+  .big{display:block;width:100%;text-align:left;background:#14181f;border:1px solid #2b3340;border-radius:18px;padding:18px 18px;margin:14px 0;color:#fff;text-decoration:none;font-size:20px;font-weight:700}
+  .big small{display:block;font-weight:400;opacity:.75;font-size:14px;margin-top:4px;line-height:1.4}
+  .join{display:flex;gap:8px;margin-top:12px}
+  .join input{flex:1;min-width:0;font-size:22px;letter-spacing:.12em;text-transform:uppercase;text-align:center;background:#0a0a0a;color:#fff;border:1px solid #333;border-radius:12px;padding:12px}
+  .join button{background:#2a7fff;color:#fff;border:0;border-radius:12px;padding:0 20px;font-size:17px;font-weight:700}
+  a.link{color:#9db8ff}
+  .foot{margin-top:28px;font-size:13px;opacity:.7}
+</style>
+</head>
+<body>
+<main>
+  <h1>Teleprompter</h1>
+  <p>Use two devices: one <b>controls</b> the script, the other is the <b>screen</b> the talent reads from. Both need an internet connection.</p>
+
+  <a class="big" href="controller.html">🎛 Controller
+    <small>Run the script, speed, settings and library from this iPad, phone or laptop. Sign in with Google.</small></a>
+
+  <div class="big" style="cursor:default">📺 Prompter screen
+    <small>Show the scrolling script on this device. No sign-in needed — just enter the code from the controller.</small>
+    <div class="join">
+      <input id="code" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="9" placeholder="ABCD-EFGH" />
+      <button id="join">Join</button>
+    </div>
+    <div id="rejoin" style="margin-top:10px" hidden><a class="link" id="rejoinLink" href="#" style="font-size:15px"></a></div>
+  </div>
+
+  <p class="foot">Using a desktop computer with a second monitor? <a class="link" href="index.html?desktop=1">Use the desktop version</a></p>
+  <p class="foot">This teleprompter app was developed with the help of Claude.</p>
+</main>
+<script>
+  try{ localStorage.setItem('tp_mode', 'mobile'); }catch{}
+  const go = ()=>{ const c = document.getElementById('code').value.toUpperCase().replace(/[^A-Z0-9]/g,''); if (c.length === 8) location.href = 'display.html?code=' + c; else { document.getElementById('code').focus(); } };
+  document.getElementById('join').addEventListener('click', go);
+  document.getElementById('code').addEventListener('keydown', (e)=>{ if (e.key === 'Enter') go(); });
+  try{
+    const saved = localStorage.getItem('tp_display_code');
+    if (saved){ const a = document.getElementById('rejoinLink'); a.textContent = 'Rejoin ' + saved.slice(0,4) + '-' + saved.slice(4); a.href = 'display.html?code=' + saved; document.getElementById('rejoin').hidden = false; }
+  }catch{}
+  document.querySelectorAll('a[href^="index.html"]').forEach(a=>a.addEventListener('click', ()=>{ try{ localStorage.setItem('tp_mode','desktop'); }catch{} }));
+</script>
+</body>
+</html>

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black" />
+<meta name="theme-color" content="#0e0e0e" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icon-180.png" />
+<title>Teleprompter controller</title>
+<link rel="stylesheet" href="tp/core.css" />
+<style>
+  html,body{height:100%}
+  body{height:100dvh}
+  button{background:#1f1f1f;color:#fff;border:1px solid #333;border-radius:12px;padding:10px 12px;font-size:15px;cursor:pointer;min-height:44px}
+  button:active{background:#2b2b2b}
+  button.primary{background:#2a7fff;border-color:#2a7fff}
+  button.danger{background:#7a1f1f;border-color:#a33}
+  .muted{opacity:.75;font-size:13px}
+  textarea,input[type=text]{width:100%;background:#0a0a0a;color:#fff;border:1px solid #222;border-radius:10px;padding:10px;font-size:16px}
+  .top{flex:none;display:flex;align-items:center;gap:10px;padding:max(8px,env(safe-area-inset-top)) 12px 8px;background:#0e0e0e;border-bottom:1px solid #222}
+  .top .back{color:#fff;text-decoration:none;font-size:26px;line-height:1;padding:0 6px}
+  .chip{flex:1;min-width:0;text-align:left;border-radius:999px;font-size:14px;padding:8px 14px;background:#121212;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .chip.live{border-color:#2e7d32}
+  #toast{position:fixed;left:50%;top:max(56px,calc(env(safe-area-inset-top) + 48px));transform:translateX(-50%);background:#222;border:1px solid #444;border-radius:999px;padding:8px 16px;font-size:14px;z-index:60;opacity:0;pointer-events:none;transition:opacity .25s;max-width:92vw;text-align:center}
+  #toast.show{opacity:1}
+  .dock{flex:none;background:#0e0e0e;border-top:1px solid #222;padding:8px 10px max(8px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px}
+  .row{display:flex;gap:8px;align-items:stretch;justify-content:center}
+  .transport button{flex:1;padding:10px 4px;font-size:14px;line-height:1.15}
+  .transport .play{flex:2.2;font-size:18px;font-weight:700;background:#2a7fff;border-color:#2a7fff}
+  .transport .play.on{background:#c62828;border-color:#c62828}
+  .speedrow{align-items:center}
+  .speedrow button{width:64px;font-size:22px;padding:6px}
+  #spdVal{min-width:110px;text-align:center;font-size:16px}
+  .tabs button{flex:1;font-size:13px;padding:8px 2px;border-radius:10px;min-height:44px}
+  .gate{position:fixed;inset:0;z-index:100;background:#000;display:flex;align-items:center;justify-content:center;padding:24px}
+  .gate[hidden]{display:none}
+  .card{max-width:420px;text-align:center}
+  .card h1{margin:0 0 10px;font-size:26px}
+  .card p{line-height:1.5;opacity:.85}
+  .card button{width:100%;margin:6px 0}
+  .card a{color:#9db8ff}
+  dialog.sheet{position:fixed;inset:auto 0 0 0;margin:0;width:100%;max-width:none;max-height:88dvh;border:1px solid #333;border-bottom:0;border-radius:18px 18px 0 0;background:#0f0f0f;color:#fff;padding:0;overflow:auto}
+  dialog.sheet::backdrop{background:rgba(0,0,0,.6)}
+  .sh-head{position:sticky;top:0;background:#0f0f0f;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #222;z-index:1}
+  .sh-body{padding:12px 16px max(20px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px}
+  .ctl{background:#0b0b0b;border:1px solid #222;border-radius:12px;padding:8px 12px}
+  .ctl-top{display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px}
+  .ctl input[type=range]{width:100%}
+  .sw{display:flex;justify-content:space-between;align-items:center;background:#0b0b0b;border:1px solid #222;border-radius:12px;padding:12px;font-size:15px}
+  .sw input{width:22px;height:22px}
+  .rowbtns{display:flex;gap:8px;flex-wrap:wrap}
+  .rowbtns button{flex:1}
+  .item{display:flex;flex-direction:column;gap:8px;border:1px solid #222;border-radius:12px;padding:10px;background:#0b0b0b}
+  .item .t{font-weight:600}
+  .code{font-size:40px;font-weight:800;letter-spacing:.12em;text-align:center;padding:8px 0;font-variant-numeric:tabular-nums}
+  .status{display:flex;align-items:center;gap:8px;justify-content:center;font-size:15px}
+  .dot{width:10px;height:10px;border-radius:50%;background:#777}
+  .dot.on{background:#43a047}
+</style>
+</head>
+<body>
+  <div class="gate" id="gate" hidden>
+    <div class="card">
+      <h1>Controller</h1>
+      <p id="gateMsg">Sign in with Google to run a prompter session.</p>
+      <button class="primary" id="gateGo">Sign in with Google</button>
+      <p><a href="mobile.html">← Back</a> · <a href="index.html?desktop=1" id="toDesktop">Use the desktop version</a></p>
+    </div>
+  </div>
+
+  <header class="top">
+    <a class="back" href="mobile.html" title="Back">‹</a>
+    <button class="chip" id="sessChip">○ No session — tap to start</button>
+  </header>
+  <div id="toast"></div>
+
+  <div class="stage" id="stage">
+    <div class="guide" id="guide"><div class="grip" id="grip">⇕ EYELINE</div></div>
+    <div class="viewer" id="viewer"><div class="content" id="content"></div></div>
+  </div>
+
+  <nav class="dock">
+    <div class="row transport">
+      <button id="toTop" title="Back to the start">⏮<br>Top</button>
+      <button id="prevP" title="Previous paragraph">↑<br>Prev</button>
+      <button id="playBtn" class="play">▶ Play</button>
+      <button id="nextP" title="Next paragraph">↓<br>Next</button>
+      <button id="toEnd" title="Jump to the end">⏭<br>End</button>
+    </div>
+    <div class="row speedrow">
+      <button id="spdDn" aria-label="Slower">−</button>
+      <span id="spdVal">80 px/s</span>
+      <button id="spdUp" aria-label="Faster">+</button>
+    </div>
+    <div class="row tabs">
+      <button data-sheet="script">✎ Script</button>
+      <button data-sheet="settings">⚙ Settings</button>
+      <button data-sheet="library">📂 Library</button>
+      <button data-sheet="session">📡 Session</button>
+      <button id="teamTab" data-sheet="team" hidden>👥 Team</button>
+      <button id="acctBtn" title="Account / sign out">👤</button>
+    </div>
+  </nav>
+
+  <!-- Script -->
+  <dialog class="sheet" id="sheet-script">
+    <div class="sh-head"><strong>Script</strong><button data-close>Done</button></div>
+    <div class="sh-body">
+      <div class="muted" id="curName">Not saved yet</div>
+      <textarea id="scriptBox" style="height:38dvh" placeholder="Type or paste your script here… Blank lines start a new labelled paragraph (A, B, C …)."></textarea>
+      <div class="muted" id="charInfo"></div>
+      <div class="rowbtns">
+        <button id="btnSave">💾 Save</button>
+        <button id="btnSaveAs">Save As</button>
+        <button id="btnOpen">📂 Open…</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Settings -->
+  <dialog class="sheet" id="sheet-settings">
+    <div class="sh-head"><strong>Display settings</strong><button data-close>Done</button></div>
+    <div class="sh-body">
+      <label class="ctl"><div class="ctl-top"><span>Font size</span><b id="vFont"></b></div><input id="rFont" type="range" min="20" max="160" step="1"></label>
+      <label class="ctl"><div class="ctl-top"><span>Column width</span><b id="vCol"></b></div><input id="rCol" type="range" min="600" max="1600" step="10"></label>
+      <label class="ctl"><div class="ctl-top"><span>Eye line position</span><b id="vGuide"></b></div><input id="rGuide" type="range" min="2" max="98" step="0.5"></label>
+      <label class="ctl"><div class="ctl-top"><span>Speed</span><b id="vSpeed"></b></div><input id="rSpeed" type="range" min="10" max="300" step="5"></label>
+      <label class="sw"><span>Show eye line</span><input id="cGuide" type="checkbox"></label>
+      <label class="sw"><span>Lock eye line</span><input id="cLock" type="checkbox"></label>
+      <label class="sw"><span>Mirror (prompter screen)</span><input id="cMirror" type="checkbox"></label>
+      <label class="sw"><span>Flip (prompter screen)</span><input id="cFlip" type="checkbox"></label>
+      <div class="muted">Tip: drag the red EYELINE tab on the preview — or on the prompter screen itself — to place it where the talent's eyes are.</div>
+    </div>
+  </dialog>
+
+  <!-- Library -->
+  <dialog class="sheet" id="sheet-library">
+    <div class="sh-head"><strong>Team library</strong><button data-close>Done</button></div>
+    <div class="sh-body">
+      <div class="rowbtns"><button id="libSave">💾 Save</button><button id="libSaveAs">Save As</button></div>
+      <div class="muted" id="libCur"></div>
+      <div id="libList"></div>
+    </div>
+  </dialog>
+
+  <!-- Session -->
+  <dialog class="sheet" id="sheet-session">
+    <div class="sh-head"><strong>Prompter session</strong><button data-close>Done</button></div>
+    <div class="sh-body" id="sessBody"></div>
+  </dialog>
+
+  <!-- Team (admin) -->
+  <dialog class="sheet" id="sheet-team">
+    <div class="sh-head"><strong>Team members</strong><button data-close>Done</button></div>
+    <div class="sh-body">
+      <div class="muted">Only people on this list (plus you, the admin) can run sessions and use the library. They sign in with the Google account for the email you add.</div>
+      <textarea id="teamEmail" style="height:90px" placeholder="Paste emails — one or many, separated by commas, spaces or new lines." autocomplete="off" spellcheck="false"></textarea>
+      <button id="teamAdd" class="primary">Add to team</button>
+      <div class="muted" id="teamMsg"></div>
+      <div id="teamList"></div>
+    </div>
+  </dialog>
+
+<script type="module" src="tp/controller.js"></script>
+</body>
+</html>
