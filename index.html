@@ -102,7 +102,10 @@
   .team-row{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #222;border-radius:12px;padding:8px 10px;margin:6px 0;background:#0b0b0b}
 
   /* Load dialog */
-  dialog#loadDialog{border:1px solid #333;background:#0f0f0f;color:#fff;border-radius:16px;padding:0;max-width:640px;width:90%}
+  dialog#loadDialog, dialog#teamDialog, dialog#signinDialog{border:1px solid #333;background:#0f0f0f;color:#fff;border-radius:16px;padding:0;max-width:640px;width:90%}
+  dialog::backdrop{background:rgba(0,0,0,.65)}
+  .ui-pill.primary{background:#2a7fff;border-color:#2a7fff;color:#fff}
+  .ui-pill.primary:hover{background:#3b8bff}
   .dlg-head{padding:14px 16px;border-bottom:1px solid #222;display:flex;align-items:center;justify-content:space-between}
   .dlg-body{padding:10px 16px;max-height:60vh;overflow:auto}
   .dlg-foot{padding:12px 16px;border-top:1px solid #222;display:flex;justify-content:flex-end}
@@ -205,6 +208,18 @@
       </div>
       <div id="teamMsg" class="muted" style="margin-bottom:8px;min-height:1.2em"></div>
       <div id="teamList"></div>
+    </div>
+  </dialog>
+
+  <!-- Sign-in prompt shown when the page opens -->
+  <dialog id="signinDialog">
+    <div class="dlg-head"><strong>Welcome</strong></div>
+    <div class="dlg-body">
+      <p id="signinMsg" style="margin:6px 0 14px;font-size:15px;line-height:1.5"></p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button id="signinGo" style="background:#2a7fff;border-color:#2a7fff;padding:10px 16px;font-size:14px">Sign in with Google</button>
+        <button id="signinSkip" style="padding:10px 16px;font-size:14px">Continue without signing in</button>
+      </div>
     </div>
   </dialog>
 
@@ -859,7 +874,7 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
     try{ const d = await getDoc(doc(db, 'members', email)); isMember = d.exists(); }catch{ isMember = false; }
   }
   function updateAuthUI(){
-    if (authBtn) authBtn.textContent = me ? 'Sign out' : 'Sign in with Google';
+    if (authBtn){ authBtn.textContent = me ? 'Sign out' : 'Sign in with Google'; authBtn.classList.toggle('primary', !me); }
     if (teamBtn) teamBtn.style.display = isAdmin ? '' : 'none';
     if (authInfo){
       authInfo.textContent = !me ? 'Not signed in' : `${me.email} · ${isAdmin ? 'admin' : isMember ? 'team member' : 'not on team list'}`;
@@ -876,7 +891,33 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   }
   async function signInNow(){ try{ await signInWithPopup(auth, provider); }catch(err){ authError(err); } }
   authBtn?.addEventListener('click', ()=>{ if (me) signOut(auth).catch(console.error); else signInNow(); });
-  onAuthStateChanged(auth, async (user)=>{ me = user || null; await refreshRole(me); updateAuthUI(); });
+  // ----- Ask people to sign in when they open the page -----
+  const signinDlg = $('signinDialog'), signinMsg = $('signinMsg'), signinGo = $('signinGo'), signinSkip = $('signinSkip');
+  function renderSignin(){
+    if (!me){
+      signinMsg.innerHTML = 'Sign in with your Google account to save and open scripts in your team library.<br><span class="muted">You can still use the teleprompter without signing in.</span>';
+      signinGo.textContent = 'Sign in with Google';
+    } else {
+      signinMsg.innerHTML = `You're signed in as <b>${esc(me.email)}</b>, but that email isn't on the team list.<br><span class="muted">Ask the admin to add it, or sign in with a different Google account.</span>`;
+      signinGo.textContent = 'Use a different account';
+    }
+  }
+  function maybePromptSignin(){
+    if (isMember) return;
+    try{ if (sessionStorage.getItem('tp_skip_signin')) return; }catch{}
+    renderSignin();
+    if (signinDlg && !signinDlg.open) signinDlg.showModal();
+  }
+  signinGo?.addEventListener('click', async ()=>{ if (me) await signOut(auth).catch(()=>{}); await signInNow(); });
+  signinSkip?.addEventListener('click', ()=>{ try{ sessionStorage.setItem('tp_skip_signin', '1'); }catch{} signinDlg?.close(); });
+
+  let firstAuth = true;
+  onAuthStateChanged(auth, async (user)=>{
+    me = user || null; await refreshRole(me); updateAuthUI();
+    if (firstAuth){ firstAuth = false; maybePromptSignin(); }          // first answer from Firebase on page load
+    else if (me && isMember) signinDlg?.close();                         // signed in successfully
+    else if (me && signinDlg?.open) renderSignin();                      // signed in but not on the list
+  });
   updateAuthUI();
 
   // Every cloud action goes through this gate
