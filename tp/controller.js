@@ -7,6 +7,7 @@ import { createSession } from './session.js';
 const $ = (id)=>document.getElementById(id);
 const viewer = $('viewer'), content = $('content'), stage = $('stage'), guide = $('guide'), grip = $('grip'), box = $('scriptBox');
 const clamp = (v, a, b)=>Math.min(b, Math.max(a, v));
+const ico = (n)=>`<svg class="ico" aria-hidden="true"><use href="#i-${n}"/></svg>`;
 
 // ============ state (settings are remembered on this device, shared with the desktop page) ============
 const st = { ...DEFAULT_SETTINGS, text:'', playing:false, pos:0, anchorMs:0 };
@@ -68,7 +69,7 @@ async function tryResume(){
 }
 
 // ============ transport ============
-function updatePlayUI(){ const b = $('playBtn'); b.textContent = st.playing ? '⏸ Pause' : '▶ Play'; b.classList.toggle('on', st.playing); $('spdVal').textContent = st.speed + ' px/s'; }
+function updatePlayUI(){ const b = $('playBtn'); b.innerHTML = st.playing ? ico('pause') + ' Pause' : ico('play') + ' Play'; b.classList.toggle('on', st.playing); $('spdVal').textContent = st.speed + ' px/s'; }
 function rebase(){ st.pos = clamp(positionAt(st, now()), 0, maxPos(viewer, scale)); st.anchorMs = now(); }
 function play(){ rebase(); st.playing = true; updatePlayUI(); queue(playbackFields(), 0); sess.ping(); sess.scheduleBeat(); }
 function pause(){ rebase(); st.playing = false; updatePlayUI(); queue(playbackFields(), 0); }
@@ -199,10 +200,10 @@ function qrSvg(text){
 }
 function updateChip(){
   const chip = $('sessChip');
-  if (!sess.active){ chip.textContent = '○ No presenter window — tap to start'; chip.classList.remove('live'); chip.style.borderColor = ''; return; }
+  if (!sess.active){ chip.innerHTML = '<span class="cdot"></span>No presenter window — tap to start'; chip.classList.remove('live'); chip.style.borderColor = ''; return; }
   const offline = sess.offline(), ok = sess.displayConnected();
-  chip.textContent = offline ? `⚠ ${sess.fmt()} · OFFLINE — the presenter window will hold its position`
-    : `${ok ? '●' : '○'} ${sess.fmt()} · ${ok ? 'presenter window connected' : 'waiting for presenter window'}`;
+  chip.innerHTML = offline ? `${ico('warn')} ${sess.fmt()} · OFFLINE — the presenter window will hold its position`
+    : `<span class="cdot ${ok ? 'on' : ''}"></span>${sess.fmt()} · ${ok ? 'presenter window connected' : 'waiting for presenter window'}`;
   chip.classList.toggle('live', !!ok && !offline);
   chip.style.borderColor = offline ? '#d32f2f' : '';
 }
