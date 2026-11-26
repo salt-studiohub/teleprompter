@@ -99,7 +99,7 @@
         <h2 style="margin:0;">Operator</h2>
         <div class="muted small" id="instructions">
           Keys: <span class="kbd">Space</span> autoscroll · <span class="kbd">↑/↓</span> nudge ·
-          <span class="kbd">G</span> guide · <span class="kbd">A–Z</span> jump to paragraph (tap a letter twice fast for AA, three times for AAA) ·
+          <span class="kbd">G</span> guide ·
           <span class="kbd">T</span> tools · <span class="kbd">F</span> fullscreen · <span class="kbd">⌘/Ctrl+S</span> save
         </div>
       </div>
@@ -425,7 +425,6 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
 
   document.addEventListener('keydown',(e)=>{
     if(e.key==='f' || e.key==='F'){ e.preventDefault(); toggleFS(); return; }
-    if(/^[a-zA-Z]$/.test(e.key)){ e.preventDefault(); jumpToLabel(e.key); }
   });
 })();<\/script>
 </body></html>`; }
@@ -584,17 +583,6 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
 
   function scrollBy(amount){ if (!viewer) return; viewer.scrollTop = Math.max(0, viewer.scrollTop + amount); state.scrollTop = viewer.scrollTop; send({type:'scroll', scrollTop: state.scrollTop}); }
 
-  // Tap a letter to jump to that paragraph; tap the same letter again quickly for AA, AAA ...
-  let lastKey = '', lastKeyAt = 0, repeatCount = 0;
-  function jumpByKey(k){
-    const L = k.toUpperCase(), now = performance.now();
-    repeatCount = (L === lastKey && now - lastKeyAt < 800) ? repeatCount + 1 : 1;
-    lastKey = L; lastKeyAt = now;
-    let label = L.repeat(repeatCount);
-    if (!labelMap[label]){ repeatCount = 1; label = L; }
-    jumpToLabel(label);
-  }
-
   document.addEventListener('keydown', (e)=>{
     const key = e.key;
     const el = document.activeElement;
@@ -609,12 +597,13 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
     // Typing in the script box (or any text field) must behave normally: space, letters, arrows, etc.
     if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
 
-    if (/^[a-zA-Z]$/.test(key)){ e.preventDefault(); jumpByKey(key); return; }
-
-    if (['ArrowUp','ArrowDown',' ','Spacebar'].includes(key)) e.preventDefault();
+    if (['ArrowUp','ArrowDown',' ','Spacebar','g','G','t','T','f','F'].includes(key)) e.preventDefault();
     if (key==='ArrowUp') scrollBy(-60);
     else if (key==='ArrowDown' || key==='Down') scrollBy(60);
     else if (key===' ' || key==='Spacebar'){ if (autoscroll){ autoscroll.checked = !autoscroll.checked; state.autoscroll = autoscroll.checked; render(); broadcastState(); manageAuto(); } }
+    else if (key==='g' || key==='G'){ if (showGuide){ showGuide.checked = !showGuide.checked; state.guideVisible = showGuide.checked; render(); broadcastState(); } }
+    else if (key==='t' || key==='T'){ toggleUI(); }
+    else if (key==='f' || key==='F'){ toggleFullscreen(); }
   });
 
   window.addEventListener('resize', ()=>{ updatePadTBpx(); broadcastState(); });
