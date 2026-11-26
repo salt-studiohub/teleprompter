@@ -41,7 +41,7 @@ function renderText(){ buildParagraphs(st.text, content); relayout(); }
 window.addEventListener('resize', ()=>{ relayout(); });
 
 // ============ session (Firestore document that the prompter screen follows) ============
-let ref = null, code = '', unsub = null, hb = null, dispSeenMs = 0, dispInfo = null, lastSeq = null;
+let ref = null, code = '', unsub = null, hb = null, dispSeenMs = 0, dispInfo = null, lastSeq = null, lastAck = 0;
 let pend = {}, pendT = null;
 const playbackFields = ()=>({ playing: st.playing, pos: st.pos, anchorMs: st.anchorMs, speed: st.speed });
 function queue(fields, delay = 150){
@@ -82,18 +82,28 @@ function attach(){
   try{ localStorage.setItem('tp_session_code', code); }catch{}
   lastSeq = null; dispSeenMs = 0; dispInfo = null;
   unsub = onSnapshot(ref, onSnap, (err)=>{ console.error(err); if (err && err.code === 'permission-denied'){ notify('The session expired.'); detach(false); } });
+  lastAck = Date.now();
   ping(); setTimeout(ping, 500); setTimeout(ping, 1200);
-  hb = setInterval(ping, 20000);
+  scheduleBeat();
   updateChip(); renderSession();
 }
+let pingBusy = false, pingAt = 0;
 async function ping(){
   if (!ref) return;
+  if (pingBusy && Date.now() - pingAt < 12000) return;       // don't pile up check-ins while offline
+  pingBusy = true; pingAt = Date.now();
   const id = clock.nextPing();
-  try{ await updateDoc(ref, { 'ctl.ping': serverTimestamp(), 'ctl.pingId': id, 'ctl.seen': serverTimestamp(), expiresAt: new Date(Date.now() + SESSION_TTL_MS) }); }
+  try{ await updateDoc(ref, { 'ctl.ping': serverTimestamp(), 'ctl.pingId': id, 'ctl.seen': serverTimestamp(), expiresAt: new Date(Date.now() + SESSION_TTL_MS) }); lastAck = Date.now(); }
   catch(e){ writeError(e); }
+  finally{ pingBusy = false; }
+}
+// Check in every 3 s while playing (so the prompter screen can hold its position if we vanish), every 20 s otherwise.
+function scheduleBeat(){
+  clearTimeout(hb);
+  hb = setTimeout(()=>{ if (!ref) return; ping(); scheduleBeat(); }, st.playing ? 3000 : 20000);   // never wait on a hung write
 }
 function detach(deleteLocalCode = true){
-  if (unsub){ unsub(); unsub = null; } clearInterval(hb); hb = null; ref = null; code = ''; pend = {};
+  if (unsub){ unsub(); unsub = null; } clearTimeout(hb); hb = null; ref = null; code = ''; pend = {};
   if (deleteLocalCode) try{ localStorage.removeItem('tp_session_code'); }catch{}
   else try{ localStorage.removeItem('tp_session_code'); }catch{}
   updateChip(); renderSession();
@@ -140,7 +150,7 @@ async function tryResume(){
 // ============ transport ============
 function updatePlayUI(){ const b = $('playBtn'); b.textContent = st.playing ? '⏸ Pause' : '▶ Play'; b.classList.toggle('on', st.playing); $('spdVal').textContent = st.speed + ' px/s'; }
 function rebase(){ st.pos = clamp(positionAt(st, now()), 0, maxPos(viewer, scale)); st.anchorMs = now(); }
-function play(){ rebase(); st.playing = true; updatePlayUI(); queue(playbackFields(), 0); }
+function play(){ rebase(); st.playing = true; updatePlayUI(); queue(playbackFields(), 0); ping(); scheduleBeat(); }
 function pause(){ rebase(); st.playing = false; updatePlayUI(); queue(playbackFields(), 0); }
 function toggle(){ st.playing ? pause() : play(); }
 function seek(u){ st.pos = clamp(u, 0, maxPos(viewer, scale)); st.anchorMs = now(); setView(st.pos); queue(playbackFields(), 0); }
@@ -271,11 +281,14 @@ const displayUrl = ()=> new URL('display.html', location.href).href;
 function updateChip(){
   const chip = $('sessChip');
   if (!ref){ chip.textContent = '○ No session — tap to start'; chip.classList.remove('live'); return; }
+  const offline = st.playing && Date.now() - lastAck > 10000;      // our check-ins are not getting through
   const ok = dispSeenMs && now() - dispSeenMs < 25000;
-  chip.textContent = `${ok ? '●' : '○'} ${fmtCode(code)} · ${ok ? 'prompter screen connected' : 'waiting for prompter screen'}`;
-  chip.classList.toggle('live', !!ok);
+  chip.textContent = offline ? `⚠ ${fmtCode(code)} · OFFLINE — the prompter screen will hold its position`
+    : `${ok ? '●' : '○'} ${fmtCode(code)} · ${ok ? 'prompter screen connected' : 'waiting for prompter screen'}`;
+  chip.classList.toggle('live', !!ok && !offline);
+  chip.style.borderColor = offline ? '#d32f2f' : '';
 }
-setInterval(()=>{ updateChip(); if ($('sheet-session').open) renderSession(); }, 4000);
+setInterval(()=>{ updateChip(); if ($('sheet-session').open) renderSession(); }, 2000);
 function renderSession(){
   const body = $('sessBody');
   if (!ref){

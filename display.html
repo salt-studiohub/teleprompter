@@ -25,6 +25,9 @@
   #msg:empty{display:none}
   #hud{position:fixed;top:max(10px,env(safe-area-inset-top));right:10px;z-index:20;display:flex;gap:8px;transition:opacity .3s}
   #hud button{padding:8px 12px;font-size:14px;border-radius:999px;background:#121212}
+  #warn{position:fixed;left:50%;top:max(12px,env(safe-area-inset-top));transform:translateX(-50%);z-index:30;background:#b71c1c;color:#fff;border:1px solid #ff8a80;border-radius:999px;padding:10px 18px;font-size:16px;font-weight:600;max-width:92vw;text-align:center}
+  #warn.ok{background:#1b5e20;border-color:#69f0ae}
+  #warn[hidden]{display:none}
   body.idle{cursor:none}
   body.idle #hud, body.idle .grip{opacity:0;pointer-events:none}
 </style>
@@ -44,6 +47,7 @@
   </div>
 
   <div id="msg"></div>
+  <div id="warn" hidden></div>
   <div id="hud" hidden>
     <button id="fsBtn">Fullscreen</button>
     <button id="leaveBtn">Leave</button>
@@ -63,6 +67,9 @@
   const clock = new Clock();
 
   const S = { ...DEFAULT_SETTINGS, text:'', playing:false, pos:0, anchorMs:0, ready:false };
+  let ctlSeenMs = 0, stale = false, frozenU = 0, warnT = null;
+  const STALE_MS = 9000;   // controller silent this long while playing -> hold position
+  const FRESH_MS = 6000;   // ...and resume once it has been heard from within this long
   let ref = null, code = '', unsub = null, hbTimer = null, scale = 1, lastText = null, dragging = false, dragP = 0, wakeLock = null;
   const setMsg = (html)=>{ msg.innerHTML = html || ''; };
 
@@ -106,6 +113,7 @@
     S.playing = !!d.playing; S.pos = d.pos || 0; S.anchorMs = d.anchorMs || 0; S.speed = d.speed ?? S.speed;
     if (d.text !== lastText){ lastText = d.text || ''; S.text = lastText; buildParagraphs(S.text, content); }
     // clock sync: our own heartbeat write has now been stamped by the server
+    const ctl = d.ctl; ctlSeenMs = ctl && ctl.seen && ctl.seen.toMillis ? ctl.seen.toMillis() : 0;
     const my = d.disp;
     if (!snap.metadata.hasPendingWrites && my && my.pingId && my.ping && my.ping.toMillis) clock.resolve(my.pingId, my.ping.toMillis());
     apply();
@@ -128,12 +136,26 @@
   // ---------- scrolling: computed locally from (pos, anchor, speed) ----------
   function frame(){
     if (S.ready && !stage.hidden){
-      const u = Math.min(positionAt(S, clock.now()), maxPos(viewer, scale));
+      const mx = maxPos(viewer, scale);
+      const synced = clock.samples.length > 0;                  // judge staleness only once our clock has been checked against the server
+      const lag = ctlSeenMs && synced ? clock.now() - ctlSeenMs : 0;      // how long since the controller (or our link to it) was last confirmed alive
+      if (!stale && S.playing && ctlSeenMs && lag > STALE_MS){
+        stale = true; frozenU = Math.min(positionAt(S, clock.now()), mx);
+        showWarn('⚠ Connection lost — holding position', false);
+      } else if (stale && (!S.playing || lag < FRESH_MS)){
+        stale = false; showWarn('Reconnected', true, 2500);
+      }
+      const u = stale ? frozenU : Math.min(positionAt(S, clock.now()), mx);
       viewer.scrollTop = u * scale;
     }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
+
+  function showWarn(text, good, ms){
+    const w = $('warn'); w.textContent = text; w.classList.toggle('ok', !!good); w.hidden = false;
+    clearTimeout(warnT); if (ms) warnT = setTimeout(()=>{ w.hidden = true; }, ms);
+  }
 
   // ---------- heartbeat (also keeps the clocks in step) ----------
   async function beat(){
