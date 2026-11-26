@@ -10,6 +10,17 @@
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="apple-touch-icon" href="icon-180.png" />
 <title>Teleprompter — mobile</title>
+<script>
+  function __isDesktopComputer(){
+    try{
+      const ua = navigator.userAgent || '';
+      if (/Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(ua)) return false;
+      if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) return false;   // iPadOS pretends to be a Mac
+      return !(window.matchMedia && matchMedia('(pointer: coarse)').matches);
+    }catch{ return true; }
+  }
+  window.__desk = __isDesktopComputer();
+</script>
 <style>
   *{box-sizing:border-box}
   html,body{margin:0;min-height:100%;background:#000;color:#fff;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
@@ -30,10 +41,10 @@
   <h1>Teleprompter</h1>
   <p>Use two devices: one <b>controls</b> the script, the other is the <b>screen</b> the talent reads from. Both need an internet connection.</p>
 
-  <a class="big" href="controller.html">🎛 Controller
+  <a class="big" id="ctlCard" href="controller.html">🎛 Controller
     <small>Run the script, speed, settings and library from this iPad, phone or laptop. Sign in with Google.</small></a>
 
-  <div class="big" style="cursor:default">📺 Prompter screen
+  <div class="big" style="cursor:default">📺 Presenter window
     <small>Show the scrolling script on this device. No sign-in needed — just enter the code from the controller.</small>
     <div class="join">
       <input id="code" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="9" placeholder="ABCD-EFGH" />
@@ -46,7 +57,12 @@
   <p class="foot">This teleprompter app was developed with the help of Claude.</p>
 </main>
 <script>
-  try{ localStorage.setItem('tp_mode', 'mobile'); }catch{}
+  if (window.__desk){
+    // A desktop computer uses the desktop version; its "Open Presenter Window" button can start a presenter window on a tablet or phone.
+    const c = document.getElementById('ctlCard');
+    c.href = 'index.html?desktop=1';
+    c.querySelector('small').textContent = 'You are on a desktop computer, so this opens the desktop version. Its “Open Presenter Window” button can show a QR code to start the presenter window on a tablet or phone.';
+  } else { try{ localStorage.setItem('tp_mode', 'mobile'); }catch{} }
   const go = ()=>{ const c = document.getElementById('code').value.toUpperCase().replace(/[^A-Z0-9]/g,''); if (c.length === 8) location.href = 'display.html?code=' + c; else { document.getElementById('code').focus(); } };
   document.getElementById('join').addEventListener('click', go);
   document.getElementById('code').addEventListener('keydown', (e)=>{ if (e.key === 'Enter') go(); });

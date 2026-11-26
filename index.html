@@ -5,10 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Teleprompter — Operator & Prompter</title>
 <script>
-  /* Remember Desktop vs Mobile per device. ?desktop=1 forces desktop; "mobile" sends this device to the mobile pages. */
+  /* A desktop computer ALWAYS gets this desktop version (its "Open Presenter Window" button can also start a
+     presenter window on a tablet or phone via QR code). Tablets and phones can choose; "mobile" sends them to the
+     mobile pages. ?desktop=1 forces the desktop version. */
+  window.__tpDesktop = (function(){
+    try{
+      const ua = navigator.userAgent || '';
+      if (/Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(ua)) return false;
+      if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) return false;   // iPadOS pretends to be a Mac
+      return !(window.matchMedia && matchMedia('(pointer: coarse)').matches);
+    }catch{ return true; }
+  })();
   try{
     if (/[?&]desktop\b/.test(location.search)) localStorage.setItem('tp_mode', 'desktop');
-    else if (localStorage.getItem('tp_mode') === 'mobile') location.replace('mobile.html');
+    else if (!window.__tpDesktop && localStorage.getItem('tp_mode') === 'mobile') location.replace('mobile.html');
   }catch{}
 </script>
 <style>
@@ -109,7 +119,7 @@
   .team-row{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #222;border-radius:12px;padding:8px 10px;margin:6px 0;background:#0b0b0b}
 
   /* Load dialog */
-  dialog#loadDialog, dialog#teamDialog, dialog#signinDialog, dialog#modeDialog{border:1px solid #333;background:#0f0f0f;color:#fff;border-radius:16px;padding:0;max-width:640px;width:90%}
+  dialog#loadDialog, dialog#teamDialog, dialog#signinDialog, dialog#modeDialog, dialog#presenterDialog{border:1px solid #333;background:#0f0f0f;color:#fff;border-radius:16px;padding:0;max-width:640px;width:90%}
   dialog::backdrop{background:rgba(0,0,0,.65)}
   .ui-pill.primary{background:#2a7fff;border-color:#2a7fff;color:#fff}
   .ui-pill.primary:hover{background:#3b8bff}
@@ -139,8 +149,8 @@
           </div>
         </div>
         <div class="tb-actions">
-          <button id="openPrompter">Open Prompter Window</button>
-          <button id="prompterFS" class="ui-pill" title="Try to fullscreen the Prompter window">Prompter Fullscreen</button>
+          <button id="openPrompter">Open Presenter Window</button>
+          <button id="prompterFS" class="ui-pill" title="Try to fullscreen the Presenter window">Presenter Fullscreen</button>
           <button id="fullscreenOp" class="ui-pill" title="F to toggle fullscreen">Fullscreen</button>
           <button id="toggleUIBtn" class="ui-pill" title="T to toggle tools">Hide Tools</button>
           <details class="keys" id="keys">
@@ -166,8 +176,8 @@
           <label class="toggle"><input id="showGuide" type="checkbox" checked> Show guide</label>
           <label class="toggle"><input id="guideLock" type="checkbox"> Lock guide</label>
           <label class="toggle"><input id="autoscroll" type="checkbox"> Autoscroll</label>
-          <label class="toggle" title="Applies to the Prompter window only"><input id="invertH" type="checkbox"> Mirror</label>
-          <label class="toggle" title="Applies to the Prompter window only"><input id="invertV" type="checkbox"> Flip</label>
+          <label class="toggle" title="Applies to the Presenter window only"><input id="invertH" type="checkbox"> Mirror</label>
+          <label class="toggle" title="Applies to the Presenter window only"><input id="invertV" type="checkbox"> Flip</label>
         </div>
         <div class="tb-sliders" id="controls">
           <label class="ctl"><div class="ctl-top"><span>Font size</span><span id="fontSizeVal">64px</span></div><input id="fontSize" type="range" min="20" max="160" value="64"></label>
@@ -181,7 +191,7 @@
         <div class="script-head"><span class="muted">Script</span><span id="status" class="muted">–</span></div>
         <textarea id="script" placeholder="Type or paste your script here..."></textarea>
         <div class="script-actions">
-          <button id="applyScript" title="Re-send the script to the preview and prompter">Load to Preview & Prompter</button>
+          <button id="applyScript" title="Re-send the script to the preview and presenter window">Load to Preview & Presenter</button>
           <button id="saveScript" title="Save/Update script (team library)">💾 Save</button>
           <button id="saveAsScript" title="Save the editor contents as a NEW script">Save As</button>
           <button id="loadScript" title="Open a script from the team library">📂 Load</button>
@@ -218,14 +228,20 @@
     </div>
   </dialog>
 
-  <!-- First visit on this device: Desktop or Mobile? -->
+  <!-- Presenter window: this computer, or a tablet/phone via QR code -->
+  <dialog id="presenterDialog">
+    <div class="dlg-head"><strong>Presenter window</strong><button id="pdClose">Close</button></div>
+    <div class="dlg-body" id="pdBody"></div>
+  </dialog>
+
+  <!-- First visit on a tablet/phone: Desktop or Mobile? -->
   <dialog id="modeDialog">
     <div class="dlg-head"><strong>How are you using the teleprompter?</strong></div>
     <div class="dlg-body">
       <p class="muted" style="margin:4px 0 14px;font-size:14px;line-height:1.5">You can switch any time from the link at the bottom of the page.</p>
       <div style="display:flex;flex-direction:column;gap:10px">
-        <button id="modeDesktop" style="padding:14px 16px;font-size:15px;text-align:left"><b>🖥 Desktop</b><br><span class="muted">One computer: operator window plus a prompter window on a second monitor.</span></button>
-        <button id="modeMobile" style="padding:14px 16px;font-size:15px;text-align:left"><b>📱 Mobile / tablet</b><br><span class="muted">Two devices over the internet: a controller (iPad, phone or laptop) and a prompter screen.</span></button>
+        <button id="modeDesktop" style="padding:14px 16px;font-size:15px;text-align:left"><b>🖥 Desktop</b><br><span class="muted">One computer: operator window plus a presenter window on a second monitor.</span></button>
+        <button id="modeMobile" style="padding:14px 16px;font-size:15px;text-align:left"><b>📱 Mobile / tablet</b><br><span class="muted">Two devices over the internet: a controller (iPad or phone) and a presenter window.</span></button>
       </div>
     </div>
   </dialog>
@@ -378,7 +394,7 @@
 
   /* ---- Prompter open ---- */
   function prompterHTML(){ return `<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Prompter</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Presenter</title>
 <style>
 :root{
   --fontSize:${state.fontSize}px;
@@ -557,16 +573,20 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
 </body></html>`; }
 
   function openPrompter(){
-    if (status) status.textContent = 'Opening prompter…';
+    if (status) status.textContent = 'Opening presenter window…';
     if (prompterWin && !prompterWin.closed){ try{prompterWin.close();}catch{} }
     prompterWin = window.open('', 'TeleprompterWindow', 'popup=yes,width=1200,height=800');
     if(!prompterWin){ alert('Pop-up blocked. Please allow pop-ups for this site.'); if(status) status.textContent='Popup blocked.'; return; }
     prompterWin.document.open(); prompterWin.document.write(prompterHTML()); prompterWin.document.close();
     if (pingTimer) clearInterval(pingTimer);
     pingTimer = setInterval(()=>{ try{ if (prompterWin && !prompterWin.closed) prompterWin.postMessage({type:'ping'}, '*'); }catch{} }, 500);
-    setTimeout(()=>{ broadcastState(); if(status) status.textContent='Prompter ready.'; manageAuto(); setPrompterFSLabel(false); }, 300);
+    setTimeout(()=>{ broadcastState(); if(status) status.textContent='Presenter window ready.'; manageAuto(); setPrompterFSLabel(false); }, 300);
   }
-  document.getElementById('openPrompter')?.addEventListener('click', openPrompter);
+  // "Open Presenter Window": once the remote module has loaded it offers this computer or a tablet/phone (QR code).
+  // If it can't load (e.g. offline) the button simply opens the local window, exactly as before.
+  let remoteMod = null;
+  setTimeout(()=>{ import('./tp/desktop-remote.js').then((m)=>{ remoteMod = m; }).catch((e)=>console.warn('Remote presenter unavailable', e)); }, 0);
+  document.getElementById('openPrompter')?.addEventListener('click', ()=>{ if (remoteMod) remoteMod.choose(); else openPrompter(); });
 
   /* ---- Operator-side Prompter Fullscreen (with arm fallback) ---- */
   function setPrompterFSLabel(on){
@@ -574,7 +594,7 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   }
   async function togglePrompterFullscreen(){
     if (!prompterWin || prompterWin.closed){
-      alert('Open the Prompter window first.');
+      alert('Open the Presenter window first.');
       return;
     }
     try{
@@ -597,7 +617,7 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
       try{
         prompterWin.focus();
         prompterWin.postMessage({type:'armFS'}, '*');
-        if (status) status.textContent = 'Click once in Prompter to enter fullscreen (browser requires a click inside).';
+        if (status) status.textContent = 'Click once in the presenter window to enter fullscreen (browser requires a click inside).';
       }catch(e){}
     }
   }
@@ -655,7 +675,14 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
     if (viewer) viewer.scrollTop = (state.scrollTop || 0) * scale;
   }
 
-  function send(msg){ if (prompterWin && !prompterWin.closed){ prompterWin.postMessage(msg, '*'); } }
+  // Bridge for the optional remote presenter window (tablet/phone). It mirrors the same messages the local popup receives.
+  window.tpHost = { state, onSend: null, openLocal: ()=>openPrompter(),
+    setGuide: (p)=>{ setGuidePos(p); saveUI(); broadcastState(); },
+    previewGuide: (p)=>document.documentElement.style.setProperty('--guideY', p + '%') };
+  function send(msg){
+    try{ if (window.tpHost.onSend) window.tpHost.onSend(msg); }catch(e){ console.warn(e); }
+    if (prompterWin && !prompterWin.closed){ prompterWin.postMessage(msg, '*'); }
+  }
   function broadcastState(){
     const html = content ? content.innerHTML : '';
     send({type:'state', state, html});
@@ -788,7 +815,7 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
     const d = e.data || {};
     if (d.type === 'pong'){
       if (pingTimer){ clearInterval(pingTimer); pingTimer = null; }
-      if (status) status.textContent = 'Connected to prompter';
+      if (status) status.textContent = 'Connected to presenter window';
     } else if (d.type === 'prompter-fs'){
       setPrompterFSLabel(!!d.on);
     } else if (d.type === 'ready'){
@@ -823,13 +850,17 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   // Desktop / Mobile chooser (first visit on this device)
   $('modeDesktop')?.addEventListener('click', ()=>{ try{ localStorage.setItem('tp_mode','desktop'); }catch{} $('modeDialog').close(); });
   $('modeMobile')?.addEventListener('click', ()=>{ try{ localStorage.setItem('tp_mode','mobile'); }catch{} location.href = 'mobile.html'; });
-  $('toMobile')?.addEventListener('click', ()=>{ try{ localStorage.setItem('tp_mode','mobile'); }catch{} });
+  if (window.__tpDesktop){
+    const l = $('toMobile'); if (l){ l.textContent = 'Use this computer as a presenter window'; l.href = 'display.html'; }   // desktop: no mobile mode, but it can be a presenter window
+  } else {
+    $('toMobile')?.addEventListener('click', ()=>{ try{ localStorage.setItem('tp_mode','mobile'); }catch{} });
+  }
   try{
-    // suggest the likely choice: touch devices -> Mobile, otherwise Desktop
-    const coarse = window.matchMedia && matchMedia('(pointer: coarse)').matches;
-    const pick = $(coarse ? 'modeMobile' : 'modeDesktop');
-    if (pick){ pick.style.borderColor = '#2a7fff'; pick.insertAdjacentHTML('beforeend', '<div style="color:#9db8ff;font-size:12px;margin-top:6px">Suggested for this device</div>'); }
-    if (!localStorage.getItem('tp_mode')){ $('modeDialog').showModal(); if (pick) pick.focus(); }
+    if (!window.__tpDesktop){                       // only tablets/phones are asked; desktop computers just get the desktop version
+      const pick = $('modeMobile');
+      if (pick){ pick.style.borderColor = '#2a7fff'; pick.insertAdjacentHTML('beforeend', '<div style="color:#9db8ff;font-size:12px;margin-top:6px">Suggested for this device</div>'); }
+      if (!localStorage.getItem('tp_mode')){ $('modeDialog').showModal(); if (pick) pick.focus(); }
+    }
   }catch{}
 
   render(); manageAuto(); syncUIToggleLabel();
@@ -947,6 +978,7 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   document.getElementById('modeDialog')?.addEventListener('close', ()=>{ if (!firstAuth) maybePromptSignin(); });
   onAuthStateChanged(auth, async (user)=>{
     me = user || null; await refreshRole(me); updateAuthUI();
+    document.dispatchEvent(new Event('tp-auth'));
     if (firstAuth){ firstAuth = false; maybePromptSignin(); }          // first answer from Firebase on page load
     else if (me && isMember) signinDlg?.close();                         // signed in successfully
     else if (me && signinDlg?.open) renderSignin();                      // signed in but not on the list
@@ -959,6 +991,7 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
     if (!isMember){ alert(`${me.email} is not on the team list.\n\nAsk the admin to add this email under 👥 Team.`); return false; }
     return true;
   }
+  Object.assign(window.tpHost || {}, { requireTeam, me: ()=>me, isMember: ()=>isMember });
 
   // ----- Team management (admin only) -----
   async function renderTeam(){
