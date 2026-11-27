@@ -66,6 +66,7 @@ H.onSend = (msg)=>{
 // ---------- UI: status chip + dialog ----------
 const css = document.createElement('style');
 css.textContent = `
+  #endSessionBtn{background:#c62828;border-color:#e53935;color:#fff;font-weight:700} #endSessionBtn:hover{background:#d32f2f}
   #remoteChip{cursor:pointer;border:1px solid #333;border-radius:999px;padding:6px 11px;font-size:13px;background:#121212;white-space:nowrap;max-width:340px;overflow:hidden;text-overflow:ellipsis}
   #remoteChip.live{border-color:#2e7d32} #remoteChip.warn{border-color:#d32f2f}
   #presenterDialog .pd-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -86,11 +87,22 @@ css.textContent = `
 `;
 document.head.appendChild(css);
 
+// Red "End session" shortcut beside the amber Open Presenter Window button (only while a tablet/phone session is running)
+const endBtn = document.createElement('button');
+endBtn.id = 'endSessionBtn'; endBtn.hidden = true; endBtn.title = 'End the tablet / phone presenter session';
+endBtn.innerHTML = ico('stop') + ' End session';
+$('openPrompter')?.insertAdjacentElement('afterend', endBtn);
+endBtn.addEventListener('click', async ()=>{
+  if (!sess.active || !confirm('End the tablet or phone presenter session? It will disconnect.')) return;
+  await sess.end(); showQR = false; if ($('presenterDialog').open) renderDialog();
+});
+
 const chip = document.createElement('span');
 chip.id = 'remoteChip'; chip.hidden = true; chip.title = 'Presenter window on a tablet or phone';
 document.querySelector('.tb-actions')?.prepend(chip);
 chip.addEventListener('click', ()=>{ choose(); if (sess.active){ showQR = true; renderDialog(); } });   // the status chip goes straight to the code/QR
 function renderChip(){
+  endBtn.hidden = !sess.active;
   if (!sess.active){ chip.hidden = true; return; }
   chip.hidden = false;
   const off = sess.offline(), ok = sess.displayConnected();

@@ -4,6 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Teleprompter — Operator & Prompter</title>
+<link rel="preload" href="tp/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="tp/fonts/inter.css">
 <script>
   /* A desktop computer ALWAYS gets this desktop version (its "Open Presenter Window" button can also start a
      presenter window on a tablet or phone via QR code). Tablets and phones can choose; "mobile" sends them to the
@@ -75,6 +77,7 @@
   .ctl input[type=range]{width:100%;margin:3px 0 0;display:block}
   .tb-script{display:flex;flex-direction:column;gap:5px}
   .script-head{display:flex;justify-content:space-between;gap:10px;align-items:center}
+  .script-head-r{display:flex;align-items:center;gap:10px;flex:none}
   .script-title{display:flex;align-items:center;gap:10px;min-width:0;flex-wrap:wrap}
   .st-name{font-size:22px;font-weight:800;color:#fff;letter-spacing:.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60vw}
   .st-name.untitled{color:#8d9399}
@@ -97,6 +100,7 @@
   .viewer{position:relative;overflow:auto;flex:1;min-height:0;scrollbar-width:none}
   .viewer::-webkit-scrollbar{display:none}
   .content{
+    font-family:'TP Inter',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
     font-size:calc(var(--fontSize) * var(--scale));
     line-height:1.2;
     padding:var(--padTopPx) 0 var(--padBotPx);
@@ -152,7 +156,7 @@
 </head>
 <body>
 <!-- Icons: Lucide (ISC licence, https://lucide.dev) -->
-<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/> <line x1="8" x2="16" y1="21" y2="21"/> <line x1="12" x2="12" y1="17" y2="21"/></symbol><symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2" ry="2"/> <path d="M12 18h.01"/></symbol><symbol id="i-tv" viewBox="0 0 24 24"><path d="m17 2-5 5-5-5"/> <rect width="20" height="15" x="2" y="7" rx="2"/></symbol><symbol id="i-save" viewBox="0 0 24 24"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/> <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/> <path d="M7 3v4a1 1 0 0 0 1 1h7"/></symbol><symbol id="i-folder" viewBox="0 0 24 24"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></symbol><symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/> <path d="M16 3.128a4 4 0 0 1 0 7.744"/> <path d="M22 21v-2a4 4 0 0 0-3-3.87"/> <circle cx="9" cy="7" r="4"/></symbol><symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/> <circle cx="12" cy="7" r="4"/></symbol><symbol id="i-settings" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/> <circle cx="12" cy="12" r="3"/></symbol><symbol id="i-pencil" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/> <path d="m15 5 4 4"/></symbol><symbol id="i-keyboard" viewBox="0 0 24 24"><path d="M10 8h.01"/> <path d="M12 12h.01"/> <path d="M14 8h.01"/> <path d="M16 12h.01"/> <path d="M18 8h.01"/> <path d="M6 8h.01"/> <path d="M7 16h10"/> <path d="M8 12h.01"/> <rect width="20" height="16" x="2" y="4" rx="2"/></symbol><symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/> <path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol><symbol id="i-arrows" viewBox="0 0 24 24"><path d="m7 15 5 5 5-5"/> <path d="m7 9 5-5 5 5"/></symbol><symbol id="i-top" viewBox="0 0 24 24"><path d="M5 3h14"/> <path d="m18 13-6-6-6 6"/> <path d="M12 7v14"/></symbol><symbol id="i-end" viewBox="0 0 24 24"><path d="M12 17V3"/> <path d="m6 11 6 6 6-6"/> <path d="M19 21H5"/></symbol><symbol id="i-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol><symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol><symbol id="i-play" viewBox="0 0 24 24"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></symbol><symbol id="i-pause" viewBox="0 0 24 24"><rect x="14" y="3" width="5" height="18" rx="1"/> <rect x="5" y="3" width="5" height="18" rx="1"/></symbol><symbol id="i-back" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol><symbol id="i-warn" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/> <path d="M12 9v4"/> <path d="M12 17h.01"/></symbol><symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/> <path d="M12 5v14"/></symbol><symbol id="i-sliders" viewBox="0 0 24 24"><path d="M10 5H3"/> <path d="M12 19H3"/> <path d="M14 3v4"/> <path d="M16 17v4"/> <path d="M21 12h-9"/> <path d="M21 19h-5"/> <path d="M21 5h-7"/> <path d="M8 10v4"/> <path d="M8 12H3"/></symbol><symbol id="i-maximize" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/> <path d="M21 8V5a2 2 0 0 0-2-2h-3"/> <path d="M3 16v3a2 2 0 0 0 2 2h3"/> <path d="M16 21h3a2 2 0 0 0 2-2v-3"/></symbol><symbol id="i-minimize" viewBox="0 0 24 24"><path d="M8 3v3a2 2 0 0 1-2 2H3"/> <path d="M21 8h-3a2 2 0 0 1-2-2V3"/> <path d="M3 16h3a2 2 0 0 1 2 2v3"/> <path d="M16 21v-3a2 2 0 0 1 2-2h3"/></symbol><symbol id="i-leave" viewBox="0 0 24 24"><path d="m16 17 5-5-5-5"/> <path d="M21 12H9"/> <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/></symbol></svg>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/> <line x1="8" x2="16" y1="21" y2="21"/> <line x1="12" x2="12" y1="17" y2="21"/></symbol><symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2" ry="2"/> <path d="M12 18h.01"/></symbol><symbol id="i-tv" viewBox="0 0 24 24"><path d="m17 2-5 5-5-5"/> <rect width="20" height="15" x="2" y="7" rx="2"/></symbol><symbol id="i-save" viewBox="0 0 24 24"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/> <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/> <path d="M7 3v4a1 1 0 0 0 1 1h7"/></symbol><symbol id="i-folder" viewBox="0 0 24 24"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></symbol><symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/> <path d="M16 3.128a4 4 0 0 1 0 7.744"/> <path d="M22 21v-2a4 4 0 0 0-3-3.87"/> <circle cx="9" cy="7" r="4"/></symbol><symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/> <circle cx="12" cy="7" r="4"/></symbol><symbol id="i-settings" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/> <circle cx="12" cy="12" r="3"/></symbol><symbol id="i-pencil" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/> <path d="m15 5 4 4"/></symbol><symbol id="i-keyboard" viewBox="0 0 24 24"><path d="M10 8h.01"/> <path d="M12 12h.01"/> <path d="M14 8h.01"/> <path d="M16 12h.01"/> <path d="M18 8h.01"/> <path d="M6 8h.01"/> <path d="M7 16h10"/> <path d="M8 12h.01"/> <rect width="20" height="16" x="2" y="4" rx="2"/></symbol><symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/> <path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol><symbol id="i-arrows" viewBox="0 0 24 24"><path d="m7 15 5 5 5-5"/> <path d="m7 9 5-5 5 5"/></symbol><symbol id="i-top" viewBox="0 0 24 24"><path d="M5 3h14"/> <path d="m18 13-6-6-6 6"/> <path d="M12 7v14"/></symbol><symbol id="i-end" viewBox="0 0 24 24"><path d="M12 17V3"/> <path d="m6 11 6 6 6-6"/> <path d="M19 21H5"/></symbol><symbol id="i-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol><symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol><symbol id="i-play" viewBox="0 0 24 24"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></symbol><symbol id="i-pause" viewBox="0 0 24 24"><rect x="14" y="3" width="5" height="18" rx="1"/> <rect x="5" y="3" width="5" height="18" rx="1"/></symbol><symbol id="i-back" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol><symbol id="i-warn" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/> <path d="M12 9v4"/> <path d="M12 17h.01"/></symbol><symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/> <path d="M12 5v14"/></symbol><symbol id="i-sliders" viewBox="0 0 24 24"><path d="M10 5H3"/> <path d="M12 19H3"/> <path d="M14 3v4"/> <path d="M16 17v4"/> <path d="M21 12h-9"/> <path d="M21 19h-5"/> <path d="M21 5h-7"/> <path d="M8 10v4"/> <path d="M8 12H3"/></symbol><symbol id="i-maximize" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/> <path d="M21 8V5a2 2 0 0 0-2-2h-3"/> <path d="M3 16v3a2 2 0 0 0 2 2h3"/> <path d="M16 21h3a2 2 0 0 0 2-2v-3"/></symbol><symbol id="i-minimize" viewBox="0 0 24 24"><path d="M8 3v3a2 2 0 0 1-2 2H3"/> <path d="M21 8h-3a2 2 0 0 1-2-2V3"/> <path d="M3 16h3a2 2 0 0 1 2 2v3"/> <path d="M16 21v-3a2 2 0 0 1 2-2h3"/></symbol><symbol id="i-leave" viewBox="0 0 24 24"><path d="m16 17 5-5-5-5"/> <path d="M21 12H9"/> <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/></symbol><symbol id="i-stop" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/> <rect x="9" y="9" width="6" height="6" rx="1"/></symbol></svg>
   <!-- Restore pill (only shows when UI is hidden) -->
   <button id="restoreUIBtn" class="ui-restore ui-pill" title="Show tools (T)">Show Tools</button>
 
@@ -183,6 +187,7 @@
               <span><span class="kbd">Home</span> <span class="kbd">End</span></span><span>Top / bottom</span>
               <span><span class="kbd">PgUp</span> <span class="kbd">PgDn</span></span><span>Page up / down</span>
               <span><span class="kbd">G</span></span><span>Show / hide guide</span>
+              <span><span class="kbd">E</span></span><span>Show / hide script editor</span>
               <span><span class="kbd">T</span></span><span>Show / hide tools</span>
               <span><span class="kbd">F</span></span><span>Fullscreen</span>
               <span><span class="kbd">⌘/Ctrl+S</span></span><span>Save</span>
@@ -201,15 +206,15 @@
           <label class="toggle" title="Applies to the Presenter window only"><input id="invertV" type="checkbox"> Flip</label>
         </div>
         <div class="tb-sliders" id="controls">
-          <label class="ctl"><div class="ctl-top"><span>Font size</span><span id="fontSizeVal">64px</span></div><input id="fontSize" type="range" min="20" max="160" value="64"></label>
-          <label class="ctl"><div class="ctl-top"><span>Column width</span><span id="colWidthVal">1000px</span></div><input id="colWidth" type="range" min="600" max="1600" step="10" value="1000"></label>
+          <label class="ctl"><div class="ctl-top"><span>Font size</span><span id="fontSizeVal">64px</span></div><input id="fontSize" type="range" min="20" max="240" value="64"></label>
+          <label class="ctl"><div class="ctl-top"><span>Column width</span><span id="colWidthVal">1000px</span></div><input id="colWidth" type="range" min="600" max="2400" step="10" value="1000"></label>
           <label class="ctl"><div class="ctl-top"><span>Guide position</span><span id="guideVal">35%</span></div><input id="guidePos" type="range" min="2" max="98" step="0.5" value="35"></label>
           <label class="ctl"><div class="ctl-top"><span>Speed</span><span id="speedVal">80 px/s</span></div><input id="speed" type="range" min="10" max="300" step="5" value="80"></label>
         </div>
       </div>
 
       <div class="tb-script">
-        <div class="script-head"><div class="script-title" id="scriptTitle"><span class="st-name untitled" id="stName">Untitled script</span><span class="st-badge" id="stBadge" hidden></span><span class="st-unsaved" id="stUnsaved" hidden>• unsaved changes</span></div><span id="status" class="muted">–</span></div>
+        <div class="script-head"><div class="script-title" id="scriptTitle"><span class="st-name untitled" id="stName">Untitled script</span><span class="st-badge" id="stBadge" hidden></span><span class="st-unsaved" id="stUnsaved" hidden>• unsaved changes</span></div><div class="script-head-r"><span id="status" class="muted">–</span><button id="editorToggle" class="ui-pill" title="Hide the script text box — not needed during a live shoot (E)" aria-label="Hide script editor"><svg class="ico" aria-hidden="true"><use href="#i-up"/></svg><span class="lbl"> Hide editor</span></button></div></div>
         <textarea id="script" placeholder="Type or paste your script here..."></textarea>
         <div class="script-actions">
           <button id="applyScript" title="Re-send the script to the preview and presenter window">Load to Preview & Presenter</button>
@@ -377,7 +382,7 @@
   // Padding = guide offset, so scroll position N always means "text at the eye line", whatever the window height.
   function updatePadTBpx(){
     if (!viewer) return;
-    scale = Math.min(1, Math.max(0.2, viewer.offsetWidth / state.colWidth));
+    scale = Math.min(1, Math.max(0.2, (viewer.offsetWidth - 2 * Math.max(16, Math.round(viewer.offsetWidth * 0.04))) / state.colWidth));   // even side margins (~4%, min 16px)
     padTopPx = viewer.clientHeight * (state.guidePos/100);
     const r = document.documentElement.style;
     r.setProperty('--scale', scale);
@@ -418,26 +423,30 @@
 
   async function toggleFullscreen(){
     try{
-      if (!document.fullscreenElement){
-        await document.documentElement.requestFullscreen();
+      const el = document.documentElement, on = document.fullscreenElement || document.webkitFullscreenElement;
+      if (!on){
+        await (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
         if (fullscreenOp) fullscreenOp.textContent = 'Exit Fullscreen';
       }else{
-        await document.exitFullscreen();
+        await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
         if (fullscreenOp) fullscreenOp.textContent = 'Fullscreen';
       }
     }catch(e){ console.warn('Fullscreen failed:', e); }
   }
   fullscreenOp?.addEventListener('click', toggleFullscreen);
-  document.addEventListener('fullscreenchange', ()=>{
-    if (fullscreenOp) fullscreenOp.textContent = document.fullscreenElement ? 'Exit Fullscreen' : 'Fullscreen';
+  const opFsChange = ()=>{
+    if (fullscreenOp) fullscreenOp.textContent = (document.fullscreenElement || document.webkitFullscreenElement) ? 'Exit Fullscreen' : 'Fullscreen';
     fitPreview();
     broadcastState();
-  });
+  };
+  document.addEventListener('fullscreenchange', opFsChange); document.addEventListener('webkitfullscreenchange', opFsChange);
 
   /* ---- Prompter open ---- */
+  // @font-face for the presenter window (it is a separate document, so it needs absolute URLs; inline avoids a blocking stylesheet request)
+  const fontFaceCSS = ()=>{ const b = new URL('tp/fonts/', location.href).href; return `@font-face{font-family:'TP Inter';font-style:normal;font-weight:100 900;font-display:block;src:url(${b}inter-latin-ext-wght-normal.woff2) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;}` + `@font-face{font-family:'TP Inter';font-style:normal;font-weight:100 900;font-display:block;src:url(${b}inter-latin-wght-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}`; };
   function prompterHTML(){ return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Presenter</title>
-<style>
+<style>${fontFaceCSS()}
 :root{
   --fontSize:${state.fontSize}px;
   --colWidthPx:${state.colWidth}px;
@@ -453,6 +462,7 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
 .viewer{position:relative;height:100%;overflow:auto;scrollbar-width:none}
 .viewer::-webkit-scrollbar{display:none}
 .content{
+  font-family:'TP Inter',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
   font-size:calc(var(--fontSize) * var(--scale));
   line-height:1.2;
   padding:var(--padTopPx) 0 var(--padBotPx);
@@ -505,7 +515,7 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
 
   // Same layout rules as the operator window: column shrinks (text + width) to fit; scroll N = text on the eye line
   function updatePadTBpx(){
-    scale = Math.min(1, Math.max(0.2, viewer.offsetWidth / state.colWidth));
+    scale = Math.min(1, Math.max(0.2, (viewer.offsetWidth - 2 * Math.max(16, Math.round(viewer.offsetWidth * 0.04))) / state.colWidth));   // even side margins (~4%, min 16px)
     const gp = viewer.clientHeight * (state.guidePos/100);
     const r = document.documentElement.style;
     r.setProperty('--scale', scale);
@@ -594,6 +604,7 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
     else if(d.type==='armFS'){ armFS(); }
   });
   window.addEventListener('resize', relayout);
+  if (document.fonts && document.fonts.load) document.fonts.load("400 20px 'TP Inter'").then(()=>{ relayout(); }).catch(()=>{});
 
   // Eye line: drag the red tab to move it (operator stays authoritative and saves it)
   let gDragging = false, gGrab = 0;
@@ -618,7 +629,9 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   function openPrompter(){
     if (status) status.textContent = 'Opening presenter window…';
     if (prompterWin && !prompterWin.closed){ try{prompterWin.close();}catch{} }
-    prompterWin = window.open('', 'TeleprompterWindow', 'popup=yes,width=1200,height=800');
+    const sw = (screen.availWidth || 1280), sh = (screen.availHeight || 800);
+    const pw = Math.min(1200, Math.max(640, sw - 60)), ph = Math.min(800, Math.max(420, sh - 90));
+    prompterWin = window.open('', 'TeleprompterWindow', `popup=yes,width=${pw},height=${ph},left=${Math.round((sw - pw) / 2)},top=${Math.round((sh - ph) / 2)}`);
     if(!prompterWin){ alert('Pop-up blocked. Please allow pop-ups for this site.'); if(status) status.textContent='Popup blocked.'; return; }
     prompterWin.document.open(); prompterWin.document.write(prompterHTML()); prompterWin.document.close();
     if (pingTimer) clearInterval(pingTimer);
@@ -843,10 +856,11 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
     // Typing in the script box (or any text field) must behave normally: space, letters, arrows, etc.
     if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
 
-    if (['ArrowUp','ArrowDown',' ','Spacebar','g','G','t','T','f','F','+','=','-','_','[',']','Home','End','PageUp','PageDown'].includes(key)) e.preventDefault();
+    if (['ArrowUp','ArrowDown',' ','Spacebar','g','G','t','T','f','F','e','E','+','=','-','_','[',']','Home','End','PageUp','PageDown'].includes(key)) e.preventDefault();
     if (key==='ArrowUp') scrollBy(-60);
     else if (key==='ArrowDown' || key==='Down') scrollBy(60);
     else if (key===' ' || key==='Spacebar'){ if (autoscroll){ autoscroll.checked = !autoscroll.checked; state.autoscroll = autoscroll.checked; render(); broadcastState(); manageAuto(); } }
+    else if (key==='e' || key==='E'){ setEditorHidden(!scriptBox.hidden); }
     else if (key==='g' || key==='G'){ if (showGuide){ showGuide.checked = !showGuide.checked; state.guideVisible = showGuide.checked; render(); broadcastState(); } }
     else if (key==='t' || key==='T'){ toggleUI(); }
     else if (key==='f' || key==='F'){ toggleFullscreen(); }
@@ -897,6 +911,17 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   // Close the Shortcuts dropdown when clicking elsewhere
   document.addEventListener('click', (e)=>{ const d = document.getElementById('keys'); if (d && d.open && !d.contains(e.target)) d.open = false; });
 
+  // Hide / show the script text box (not needed during a live shoot). Title, Save/Load buttons and the preview stay; the preview grows.
+  function setEditorHidden(h){
+    h = !!h; scriptBox.hidden = h;
+    const b = $('editorToggle');
+    if (b){ b.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-' + (h ? 'down' : 'up') + '"/></svg><span class="lbl"> ' + (h ? 'Show editor' : 'Hide editor') + '</span>'; b.title = (h ? 'Show' : 'Hide') + ' the script text box — not needed during a live shoot (E)'; b.setAttribute('aria-label', h ? 'Show script editor' : 'Hide script editor'); }
+    try{ localStorage.setItem('tp_editor_hidden', h ? '1' : '0'); }catch{}
+    fitPreview();
+  }
+  $('editorToggle')?.addEventListener('click', ()=>setEditorHidden(!scriptBox.hidden));
+  try{ if (localStorage.getItem('tp_editor_hidden') === '1') setEditorHidden(true); }catch{}
+
   // Desktop / Mobile chooser (first visit on this device)
   $('modeDesktop')?.addEventListener('click', ()=>{ try{ localStorage.setItem('tp_mode','desktop'); }catch{} $('modeDialog').close(); });
   $('modeMobile')?.addEventListener('click', ()=>{ try{ localStorage.setItem('tp_mode','mobile'); }catch{} location.href = 'mobile.html'; });
@@ -914,6 +939,7 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   }catch{}
 
   fitPreview(); render(); manageAuto(); syncUIToggleLabel();
+  if (document.fonts && document.fonts.load) document.fonts.load("400 20px 'TP Inter'").then(()=>{ fitPreview(); }).catch(()=>{});
 })();
 </script>
 
