@@ -239,6 +239,7 @@ function qrSvg(text){
 }
 function updateChip(){
   const chip = $('sessChip');
+  $('endBtn').hidden = !sess.active;
   if (!sess.active){ chip.innerHTML = '<span class="cdot"></span>No presenter window — tap to start'; chip.classList.remove('live'); chip.style.borderColor = ''; return; }
   const offline = sess.offline(), ok = sess.displayConnected();
   chip.innerHTML = offline ? `${ico('warn')} ${sess.fmt()} · OFFLINE — the presenter window will hold its position`
@@ -269,6 +270,7 @@ function renderSession(){
   $('sEnd').onclick = ()=>{ if (confirm('End the presenter window? It will disconnect.')) sess.end(); };
 }
 $('sessChip').addEventListener('click', ()=>openSheet('session'));
+$('endBtn').addEventListener('click', ()=>{ if (sess.active && confirm('End the presenter window? It will disconnect.')) sess.end(); });
 
 // ============ team (admin) ============
 async function renderTeam(){
@@ -338,6 +340,7 @@ document.addEventListener('keydown', (e)=>{
 
 // ============ start ============
 (async function init(){
+  if (document.fonts && document.fonts.load) document.fonts.load("400 20px 'TP Inter'").then(()=>{ fitPreview(); }).catch(()=>{});
   box.value = st.text; fitPreview(); renderText(); updatePlayUI(); updateSettingsUI(); charInfo(); curName();
   $('gate').hidden = false; $('gateGo').hidden = true; $('gateMsg').textContent = 'Checking sign-in…';
   requestAnimationFrame(tick);

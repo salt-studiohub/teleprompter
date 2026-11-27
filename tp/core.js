@@ -38,7 +38,9 @@ export function buildParagraphs(text, container){
 // Whole column (text + width) shrinks to fit narrow screens, so line breaks are identical on every device.
 // Padding = eye-line offset, so scroll position "u" always means "this text sits on the eye line".
 export function layout(viewer, st, gutter = 0){
-  const scale = Math.min(1, Math.max(0.2, (viewer.offsetWidth - gutter) / st.colWidth));
+  // side margins: ~4% of the screen width each side (min 16px), so on a phone the text is never flush against an edge
+  const margin = Math.max(16, Math.round(viewer.offsetWidth * 0.04));
+  const scale = Math.min(1, Math.max(0.2, (viewer.offsetWidth - gutter - 2 * margin) / st.colWidth));
   const padTop = viewer.clientHeight * (st.guidePos / 100);
   const r = document.documentElement.style;
   r.setProperty('--fontSize', st.fontSize + 'px');
@@ -68,14 +70,26 @@ export const normCode = (s)=> (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
 // Estimates (server time - local time) from write round trips, so two devices agree on "now" to within ~100 ms.
 export class Clock {
-  constructor(){ this.offset = 0; this.samples = []; this.sent = new Map(); this.n = 0; }
-  now(){ return Date.now() + this.offset; }
+  constructor(){ this.offset = 0; this.target = 0; this.samples = []; this.sent = new Map(); this.n = 0; this._t = 0; }
+  // Corrections are applied gradually (max 40 ms per second) so a new estimate can never make the script visibly jump.
+  _slew(){
+    const t = Date.now();
+    if (this._t){
+      const dt = Math.min(1, (t - this._t) / 1000), d = this.target - this.offset;
+      if (Math.abs(d) > 500) this.offset = this.target;                       // clocks were far apart: settle at once
+      else { const step = 40 * dt; this.offset += Math.max(-step, Math.min(step, d)); }
+    }
+    this._t = t;
+  }
+  now(){ this._slew(); return Date.now() + this.offset; }
   nextPing(){ const id = ++this.n; this.sent.set(id, Date.now()); if (this.sent.size > 30) this.sent.delete(this.sent.keys().next().value); return id; }
   resolve(id, serverMs){
     const sent = this.sent.get(id); if (sent == null) return false;
     this.sent.delete(id);
-    this.samples.push(serverMs - (sent + Date.now()) / 2); if (this.samples.length > 7) this.samples.shift();
-    const s = [...this.samples].sort((a, b)=>a - b); this.offset = s[Math.floor(s.length / 2)];
+    const recv = Date.now();
+    this.samples.push({ off: serverMs - (sent + recv) / 2, rtt: recv - sent }); if (this.samples.length > 8) this.samples.shift();
+    this.target = this.samples.reduce((best, x)=>x.rtt < best.rtt ? x : best).off;    // the quickest round trip is the most accurate
+    if (this.samples.length === 1) this.offset = this.target;                          // first sync: settle at once
     return true;
   }
 }
