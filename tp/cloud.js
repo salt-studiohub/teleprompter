@@ -5,7 +5,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/fireba
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
 import {
   getFirestore, collection, addDoc, getDocs, getDoc, doc, deleteDoc, updateDoc, setDoc,
-  serverTimestamp, query, orderBy, onSnapshot
+  serverTimestamp, query, orderBy, where, onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
 
 export { doc, onSnapshot, updateDoc, setDoc, deleteDoc, getDoc, serverTimestamp };
@@ -15,19 +15,20 @@ export const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: 'select_account' });
 
-const COLL = 'publicScripts';
+const COLL = 'publicScripts';      // shared with the whole team (default)
+const PRIV = 'privateScripts';     // tagged Private: only the owner (and the admin) can open
 const EMAIL_RE = /^[^\s@\/]+@[^\s@\/]+\.[^\s@\/]+$/;
 
 /**
  * hooks: { getText():string, setText(text:string), notify(msg:string), changed():void }
  */
 export function createCloud(hooks){
-  const c = { me: null, isMember: false, isAdmin: false, currentDocId: null, currentName: '', savedText: '' };
+  const c = { me: null, isMember: false, isAdmin: false, currentDocId: null, currentColl: COLL, currentName: '', savedText: '', wantPrivate: false };
   const notify = (m)=>hooks.notify && hooks.notify(m);
   const changed = ()=>hooks.changed && hooks.changed();
 
-  try{ const m = JSON.parse(localStorage.getItem('tp_doc_meta') || 'null'); if (m && m.id){ c.currentDocId = m.id; c.currentName = m.name || ''; c.savedText = typeof m.savedText === 'string' ? m.savedText : ''; } }catch{}
-  const rememberMeta = ()=>{ try{ localStorage.setItem('tp_doc_meta', JSON.stringify({ id: c.currentDocId, name: c.currentName, savedText: c.savedText })); }catch{} };
+  try{ const m = JSON.parse(localStorage.getItem('tp_doc_meta') || 'null'); if (m && m.id){ c.currentDocId = m.id; c.currentName = m.name || ''; c.savedText = typeof m.savedText === 'string' ? m.savedText : ''; c.currentColl = m.coll === PRIV ? PRIV : COLL; c.wantPrivate = c.currentColl === PRIV; } }catch{}
+  const rememberMeta = ()=>{ try{ localStorage.setItem('tp_doc_meta', JSON.stringify({ id: c.currentDocId, name: c.currentName, savedText: c.savedText, coll: c.currentColl })); }catch{} };
 
   // ---------- auth ----------
   async function refreshRole(user){
@@ -61,8 +62,13 @@ export function createCloud(hooks){
   };
 
   // ---------- library ----------
+  // Scripts are shared with the whole team by default; tagging one Private keeps it in an owner-only area (the admin can also open it).
   c.currentLabel = ()=> c.currentDocId ? (c.currentName || '(untitled)') : '';
+  c.currentPrivate = ()=> c.currentDocId ? c.currentColl === PRIV : !!c.wantPrivate;
+  c.setPrivate = (v)=>{ c.wantPrivate = !!v; changed(); };
   c.markSaved = (text)=>{ c.savedText = text; rememberMeta(); };
+  const wantColl = ()=> c.wantPrivate ? PRIV : COLL;
+  const body = (name, text, coll, extra)=>({ name, text, owner: c.me ? (c.me.email || '').toLowerCase() : '', private: coll === PRIV, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), ...(extra || {}) });
 
   c.saveAs = async ()=>{
     if (!(await c.requireTeam())) return false;
@@ -71,22 +77,32 @@ export function createCloud(hooks){
     if (name === null) return false;
     const trimmed = (name || '').trim();
     if (!trimmed){ alert('Please enter a valid name.'); return false; }
+    const coll = wantColl();
     try{
-      const ref = await addDoc(collection(db, COLL), { name: trimmed, text, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-      c.currentDocId = ref.id; c.currentName = trimmed; c.savedText = text; rememberMeta();
-      notify(`Saved “${trimmed}” as a new script.`); changed(); return true;
+      const ref = await addDoc(collection(db, coll), body(trimmed, text, coll));
+      c.currentDocId = ref.id; c.currentName = trimmed; c.currentColl = coll; c.wantPrivate = coll === PRIV; c.savedText = text; rememberMeta();
+      notify(`Saved “${trimmed}” as a new ${coll === PRIV ? 'private' : 'shared'} script.`); changed(); return true;
     }catch(err){ console.error(err); alert('Save As failed. See console for details.'); return false; }
   };
 
   c.save = async ()=>{
     if (!(await c.requireTeam())) return false;
     if (!c.currentDocId) return c.saveAs();
-    const text = hooks.getText();
+    const text = hooks.getText(), coll = wantColl();
     try{
-      const exists = await getDoc(doc(db, COLL, c.currentDocId));
-      if (!exists.exists()) return c.saveAs();
-      await updateDoc(doc(db, COLL, c.currentDocId), { text, updatedAt: serverTimestamp() });
-      c.savedText = text; rememberMeta(); notify(`Saved “${c.currentName}”.`); changed(); return true;
+      const cur = await getDoc(doc(db, c.currentColl, c.currentDocId));
+      if (!cur.exists()) return c.saveAs();
+      if (coll === c.currentColl){
+        await updateDoc(doc(db, c.currentColl, c.currentDocId), { text, updatedAt: serverTimestamp() });
+        notify(`Saved “${c.currentName}”.`);
+      } else {                                                    // visibility changed: move it to the other area
+        const old = cur.data();
+        const ref = await addDoc(collection(db, coll), body(c.currentName, text, coll, { createdAt: old.createdAt || serverTimestamp() }));
+        await deleteDoc(doc(db, c.currentColl, c.currentDocId));
+        c.currentDocId = ref.id; c.currentColl = coll;
+        notify(`“${c.currentName}” is now ${coll === PRIV ? 'private (only you and the admin can open it)' : 'shared with the team'}.`);
+      }
+      c.wantPrivate = c.currentColl === PRIV; c.savedText = text; rememberMeta(); changed(); return true;
     }catch(err){ console.error(err); alert('Save failed. See console for details.'); return false; }
   };
 
@@ -96,7 +112,7 @@ export function createCloud(hooks){
     if (c.currentDocId){
       if (text === c.savedText) return true;
       try{
-        await updateDoc(doc(db, COLL, c.currentDocId), { text, updatedAt: serverTimestamp() });
+        await updateDoc(doc(db, c.currentColl, c.currentDocId), { text, updatedAt: serverTimestamp() });
         c.savedText = text; rememberMeta(); notify(`Autosaved “${c.currentName}”.`); return true;
       }catch(err){
         console.error(err);
@@ -108,45 +124,59 @@ export function createCloud(hooks){
     if (name === null) return confirm('Discard the unsaved script and open the other one instead?');
     const trimmed = (name || '').trim();
     if (!trimmed){ alert('Please enter a name to save the current script. Nothing was opened.'); return false; }
+    const coll = wantColl();
     try{
-      const ref = await addDoc(collection(db, COLL), { name: trimmed, text, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-      c.currentDocId = ref.id; c.currentName = trimmed; c.savedText = text; rememberMeta(); notify(`Saved “${trimmed}”.`); return true;
+      const ref = await addDoc(collection(db, coll), body(trimmed, text, coll));
+      c.currentDocId = ref.id; c.currentName = trimmed; c.currentColl = coll; c.wantPrivate = coll === PRIV; c.savedText = text; rememberMeta(); notify(`Saved “${trimmed}”.`); return true;
     }catch(err){ console.error(err); return confirm('Could not save the current script.\n\nOpen the other script anyway and lose it?'); }
   }
 
+  const when = (v)=> v.updatedAt && v.updatedAt.toDate ? v.updatedAt.toDate().toLocaleString() : '';
+  const ms = (v)=> v.updatedAt && v.updatedAt.toDate ? v.updatedAt.toDate().getTime() : 0;
+  // Returns { priv:[...], shared:[...] }. Everyone sees their own private scripts; the admin sees all of them.
   c.list = async ()=>{
-    const snap = await getDocs(query(collection(db, COLL), orderBy('updatedAt', 'desc')));
-    const rows = []; snap.forEach(d=>{ const v = d.data(); rows.push({ id: d.id, name: v.name || '(untitled)', when: v.updatedAt && v.updatedAt.toDate ? v.updatedAt.toDate().toLocaleString() : '' }); });
-    return rows;
+    const shared = []; const priv = [];
+    (await getDocs(query(collection(db, COLL), orderBy('updatedAt', 'desc')))).forEach(d=>{ const v = d.data(); shared.push({ id: d.id, coll: COLL, name: v.name || '(untitled)', when: when(v), owner: v.owner || '' }); });
+    try{
+      const q = c.isAdmin ? query(collection(db, PRIV)) : query(collection(db, PRIV), where('owner', '==', (c.me.email || '').toLowerCase()));
+      (await getDocs(q)).forEach(d=>{ const v = d.data(); priv.push({ id: d.id, coll: PRIV, name: v.name || '(untitled)', when: when(v), owner: v.owner || '', ms: ms(v) }); });
+      priv.sort((a, b)=>b.ms - a.ms);
+    }catch(e){ console.warn('Private scripts unavailable (update the Firestore rules?)', e); }
+    return { priv, shared };
   };
-  c.open = async (id)=>{
+  const collOf = (x)=> x === PRIV ? PRIV : COLL;
+  c.open = async (id, coll)=>{
+    coll = collOf(coll);
     if (!(await persistBeforeSwitch())) return false;
-    const ds = await getDoc(doc(db, COLL, id));
+    const ds = await getDoc(doc(db, coll, id));
     if (!ds.exists()){ alert('That script no longer exists.'); return false; }
     const data = ds.data();
-    c.currentDocId = id; c.currentName = data.name || '';
+    c.currentDocId = id; c.currentColl = coll; c.wantPrivate = coll === PRIV; c.currentName = data.name || '';
     hooks.setText(data.text || '');
     c.savedText = hooks.getText(); rememberMeta();
     notify(`Opened “${c.currentName || '(untitled)'}”.`); changed(); return true;
   };
-  c.rename = async (id)=>{
-    const ds = await getDoc(doc(db, COLL, id)); if (!ds.exists()) return false;
+  c.rename = async (id, coll)=>{
+    coll = collOf(coll);
+    const ds = await getDoc(doc(db, coll, id)); if (!ds.exists()) return false;
     const n = prompt('Rename script to:', ds.data().name || ''); if (n === null) return false;
     const t = (n || '').trim(); if (!t){ alert('Please enter a valid name.'); return false; }
-    await updateDoc(doc(db, COLL, id), { name: t, updatedAt: serverTimestamp() });
-    if (c.currentDocId === id){ c.currentName = t; rememberMeta(); changed(); }
+    await updateDoc(doc(db, coll, id), { name: t, updatedAt: serverTimestamp() });
+    if (c.currentDocId === id && c.currentColl === coll){ c.currentName = t; rememberMeta(); changed(); }
     return true;
   };
-  c.duplicate = async (id)=>{
-    const ds = await getDoc(doc(db, COLL, id)); if (!ds.exists()) return false;
+  c.duplicate = async (id, coll)=>{
+    coll = collOf(coll);
+    const ds = await getDoc(doc(db, coll, id)); if (!ds.exists()) return false;
     const d = ds.data();
-    await addDoc(collection(db, COLL), { name: `${d.name || 'Copy'} (copy)`, text: d.text || '', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    await addDoc(collection(db, coll), body(`${d.name || 'Copy'} (copy)`, d.text || '', coll));      // a copy stays in the same area
     return true;
   };
-  c.remove = async (id)=>{
+  c.remove = async (id, coll)=>{
+    coll = collOf(coll);
     if (!confirm('Delete this saved script?')) return false;
-    await deleteDoc(doc(db, COLL, id));
-    if (c.currentDocId === id){ c.currentDocId = null; c.currentName = ''; c.savedText = ''; try{ localStorage.removeItem('tp_doc_meta'); }catch{} changed(); }
+    await deleteDoc(doc(db, coll, id));
+    if (c.currentDocId === id && c.currentColl === coll){ c.currentDocId = null; c.currentColl = COLL; c.currentName = ''; c.savedText = ''; try{ localStorage.removeItem('tp_doc_meta'); }catch{} changed(); }
     return true;
   };
 

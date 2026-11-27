@@ -74,7 +74,14 @@
   .ctl-top{display:flex;justify-content:space-between;gap:8px;opacity:.9}
   .ctl input[type=range]{width:100%;margin:3px 0 0;display:block}
   .tb-script{display:flex;flex-direction:column;gap:5px}
-  .script-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+  .script-head{display:flex;justify-content:space-between;gap:10px;align-items:center}
+  .script-title{display:flex;align-items:center;gap:10px;min-width:0;flex-wrap:wrap}
+  .st-name{font-size:22px;font-weight:800;color:#fff;letter-spacing:.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60vw}
+  .st-name.untitled{color:#8d9399}
+  .st-badge{font-size:11px;border:1px solid #3a3a3a;border-radius:999px;padding:3px 9px;color:#c9ccd0;white-space:nowrap}
+  .st-badge.priv{border-color:#f59e0b;color:#f59e0b}
+  .st-unsaved{font-size:12px;color:#f59e0b}
+  .saved-sec{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;opacity:.8;margin:12px 2px 4px}
   #status{text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
   .script-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
   details.keys{position:relative}
@@ -82,8 +89,13 @@
   details.keys summary::-webkit-details-marker{display:none}
   .keys-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:30;background:#0f0f0f;border:1px solid #333;border-radius:12px;padding:10px 14px;width:min(92vw,340px);font-size:12px;line-height:2;box-shadow:0 8px 24px rgba(0,0,0,.6);display:grid;grid-template-columns:auto 1fr;gap:0 12px}
 
-  .stage{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;border-top:1px solid #222}
-  .viewer{position:relative;overflow:auto;flex:1;min-height:0}
+  /* The preview is a scaled copy of the presenter window's real screen (same size => same line breaks, text size and eye line) */
+  .pvhost{position:relative;flex:1;min-height:0;overflow:hidden;background:#0b0b0b;border-top:1px solid #222}
+  .stage{position:relative;flex:1;min-height:0;display:flex;flex-direction:column}
+  .stage.pv{position:absolute;left:50%;top:50%;flex:none;width:1920px;height:1080px;background:#000;box-shadow:0 0 0 1px #2a2a2a;transform-origin:center center}
+  .stage.pv .guide .grip{transform:scale(calc(1 / var(--k, 1)));transform-origin:left bottom}   /* drag tab keeps its natural size although the preview is scaled */
+  .viewer{position:relative;overflow:auto;flex:1;min-height:0;scrollbar-width:none}
+  .viewer::-webkit-scrollbar{display:none}
   .content{
     font-size:calc(var(--fontSize) * var(--scale));
     line-height:1.2;
@@ -197,24 +209,27 @@
       </div>
 
       <div class="tb-script">
-        <div class="script-head"><span class="muted">Script</span><span id="status" class="muted">–</span></div>
+        <div class="script-head"><div class="script-title" id="scriptTitle"><span class="st-name untitled" id="stName">Untitled script</span><span class="st-badge" id="stBadge" hidden></span><span class="st-unsaved" id="stUnsaved" hidden>• unsaved changes</span></div><span id="status" class="muted">–</span></div>
         <textarea id="script" placeholder="Type or paste your script here..."></textarea>
         <div class="script-actions">
           <button id="applyScript" title="Re-send the script to the preview and presenter window">Load to Preview & Presenter</button>
           <button id="saveScript" title="Save/Update script (team library)"><svg class="ico" aria-hidden="true"><use href="#i-save"/></svg> Save</button>
           <button id="saveAsScript" title="Save the editor contents as a NEW script">Save As</button>
+          <label class="toggle" id="privLabel" title="Off (default): the whole team can open this script. On: only you and the admin can."><input id="privToggle" type="checkbox"> <svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg> Private</label>
           <button id="loadScript" title="Open a script from the team library"><svg class="ico" aria-hidden="true"><use href="#i-folder"/></svg> Load</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Full-width Operator Preview -->
-  <div class="stage">
+  <!-- Operator preview: exactly what the presenter window shows (scaled to fit) -->
+  <div class="pvhost" id="pvHost">
+  <div class="stage pv">
     <div class="guide" id="guide"><div class="grip" id="guideGrip" title="Drag to move the eye line"><svg class="ico" aria-hidden="true"><use href="#i-arrows"/></svg> EYELINE</div></div>
     <div class="viewer" id="viewer" tabindex="0" aria-label="Operator preview (scroll area)">
       <div class="content" id="content"></div>
     </div>
+  </div>
   </div>
 
   <footer class="app-footer">This teleprompter app was developed with the help of Claude. · Design by the Ateneo SALT Institute · <a id="toMobile" href="mobile.html" style="color:#9db8ff">Switch to the mobile version</a></footer>
@@ -362,7 +377,7 @@
   // Padding = guide offset, so scroll position N always means "text at the eye line", whatever the window height.
   function updatePadTBpx(){
     if (!viewer) return;
-    scale = Math.min(1, Math.max(0.2, (viewer.offsetWidth - 24) / state.colWidth));
+    scale = Math.min(1, Math.max(0.2, viewer.offsetWidth / state.colWidth));
     padTopPx = viewer.clientHeight * (state.guidePos/100);
     const r = document.documentElement.style;
     r.setProperty('--scale', scale);
@@ -371,6 +386,24 @@
   }
   function relayout(){ const u = state.scrollTop || 0; updatePadTBpx(); if (viewer) viewer.scrollTop = u * scale; }
 
+  // Size of the presenter window's screen: the connected tablet/phone if there is one, else the local popup, else a typical 1920x1080.
+  function presenterSize(){
+    try{ const rs = window.tpHost && window.tpHost.remoteSize && window.tpHost.remoteSize(); if (rs) return rs; }catch{}
+    try{ if (prompterWin && !prompterWin.closed && prompterWin.innerWidth > 100) return { w: prompterWin.innerWidth, h: prompterWin.innerHeight }; }catch{}
+    return { w: 1920, h: 1080 };
+  }
+  let pvSig = '';
+  function fitPreview(){
+    const host = $('pvHost'); if (!host || !stage) return;
+    const s = presenterSize(), hw = host.clientWidth, hh = host.clientHeight; if (!hw || !hh) return;
+    stage.style.width = s.w + 'px'; stage.style.height = s.h + 'px';
+    const k = Math.min(hw / s.w, hh / s.h);
+    stage.style.transform = 'translate(-50%,-50%) scale(' + k + ')'; stage.style.setProperty('--k', k);
+    pvSig = s.w + 'x' + s.h + '@' + hw + 'x' + hh;
+    relayout();
+  }
+  setInterval(()=>{ const s = presenterSize(), host = $('pvHost'); if (host && (s.w + 'x' + s.h + '@' + host.clientWidth + 'x' + host.clientHeight) !== pvSig) fitPreview(); }, 700);
+
   function syncUIToggleLabel(){
     const hidden = document.body.classList.contains('ui-hidden');
     if (toggleUIBtn) toggleUIBtn.textContent = hidden ? 'Show Tools' : 'Hide Tools';
@@ -378,7 +411,7 @@
   function toggleUI(){
     document.body.classList.toggle('ui-hidden');
     syncUIToggleLabel();
-    relayout();
+    fitPreview();
   }
   toggleUIBtn?.addEventListener('click', toggleUI);
   restoreUIBtn?.addEventListener('click', toggleUI);
@@ -397,7 +430,7 @@
   fullscreenOp?.addEventListener('click', toggleFullscreen);
   document.addEventListener('fullscreenchange', ()=>{
     if (fullscreenOp) fullscreenOp.textContent = document.fullscreenElement ? 'Exit Fullscreen' : 'Fullscreen';
-    relayout();
+    fitPreview();
     broadcastState();
   });
 
@@ -666,7 +699,7 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
     document.documentElement.style.setProperty('--colWidthPx', state.colWidth + 'px');
     document.documentElement.style.setProperty('--guideY', state.guidePos + '%');
     if (guide) guide.style.display = state.guideVisible ? 'block' : 'none';
-    if (content) content.classList.remove('mirrorX','flipY'); // operator stays unflipped
+    if (content){ content.classList.toggle('mirrorX', !!state.invertH); content.classList.remove('flipY'); }   // preview shows Mirror like the presenter window; Flip is not shown
 
     if (fontSize){ fontSize.value = state.fontSize; fontSizeVal.textContent = state.fontSize + 'px'; }
     if (colWidth){ colWidth.value = state.colWidth; colWidthVal.textContent = state.colWidth + 'px'; }
@@ -825,7 +858,7 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
     else if (key==='PageDown'){ scrollBy(viewer.clientHeight * 0.9); }
   });
 
-  window.addEventListener('resize', ()=>{ relayout(); broadcastState(); });
+  window.addEventListener('resize', ()=>{ fitPreview(); broadcastState(); });
 
   // Listen for child messages (fullscreen state updates, ready)
   window.addEventListener('message', (e)=>{
@@ -880,7 +913,7 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
     }
   }catch{}
 
-  render(); manageAuto(); syncUIToggleLabel();
+  fitPreview(); render(); manageAuto(); syncUIToggleLabel();
 })();
 </script>
 
@@ -890,7 +923,7 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
   import {
     getFirestore, collection, addDoc, getDocs, getDoc, doc, deleteDoc, updateDoc, setDoc,
-    serverTimestamp, query, orderBy, enableIndexedDbPersistence
+    serverTimestamp, query, orderBy, where, enableIndexedDbPersistence
   } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
 
   /* Firebase config (salt-teleprompter) */
@@ -912,7 +945,8 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   // Optional offline cache
   try{ await enableIndexedDbPersistence(db); }catch(e){ console.warn('Persistence not available:', e?.code || e); }
 
-  const COLL = 'publicScripts'; // scripts collection (name kept so existing scripts stay; access is now team-only via the rules)
+  const COLL = 'publicScripts';     // scripts shared with the whole team (default). Name kept so existing scripts stay.
+  const PRIV = 'privateScripts';    // scripts tagged Private: only the owner (and the admin) can open them
 
   // DOM
   const $ = (id)=>document.getElementById(id);
@@ -928,10 +962,11 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
 
   // Track current doc to allow update vs create
   let currentDocId = null;
+  let currentColl  = COLL;   // which collection the current script lives in (shared or private)
   let currentName  = '';
   let savedText    = '';   // editor text as of the last save/load, to tell whether there are unsaved changes
-  const rememberMeta = ()=>{ try{ localStorage.setItem('tp_doc_meta', JSON.stringify({id: currentDocId, name: currentName, savedText})); }catch{} };
-  try{ const m = JSON.parse(localStorage.getItem('tp_doc_meta') || 'null'); if (m && m.id){ currentDocId = m.id; currentName = m.name || ''; savedText = typeof m.savedText === 'string' ? m.savedText : ''; } }catch{}
+  const rememberMeta = ()=>{ try{ localStorage.setItem('tp_doc_meta', JSON.stringify({id: currentDocId, name: currentName, savedText, coll: currentColl})); }catch{} };
+  try{ const m = JSON.parse(localStorage.getItem('tp_doc_meta') || 'null'); if (m && m.id){ currentDocId = m.id; currentName = m.name || ''; savedText = typeof m.savedText === 'string' ? m.savedText : ''; currentColl = m.coll === PRIV ? PRIV : COLL; } }catch{}
 
   const esc = (v)=>String(v).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -1058,6 +1093,31 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   });
 
   // Save As: always creates a NEW script from the editor contents and makes it the current one
+  // ---- Private tag + prominent script title ----
+  const privToggle = $('privToggle');
+  const wantColl = ()=> (privToggle && privToggle.checked) ? PRIV : COLL;
+  function renderTitle(){
+    const name = $('stName'), badge = $('stBadge'), uns = $('stUnsaved'); if (!name) return;
+    const has = !!currentDocId, text = scriptBox?.value || '';
+    name.textContent = has ? (currentName || '(untitled)') : 'Untitled script';
+    name.classList.toggle('untitled', !has);
+    const priv = has ? currentColl === PRIV : !!(privToggle && privToggle.checked);
+    badge.hidden = !has && !text.trim();
+    badge.className = 'st-badge' + (priv ? ' priv' : '');
+    badge.innerHTML = priv ? '<svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg> Private' : 'Shared with team';
+    uns.hidden = !(text !== savedText && (has || text.trim().length > 0));
+  }
+  function syncPrivToggle(){ if (privToggle) privToggle.checked = currentColl === PRIV && !!currentDocId; renderTitle(); }
+  privToggle?.addEventListener('change', ()=>{
+    renderTitle();
+    if (currentDocId && wantColl() !== currentColl) setStatus?.(`Click Save to make “${currentName}” ${wantColl() === PRIV ? 'private' : 'shared with the team'}.`);
+  });
+  scriptBox?.addEventListener('input', renderTitle);
+  renderTitle();
+
+  const body = (name, text, coll, extra)=>({ name, text, owner: me ? (me.email || '').toLowerCase() : '', private: coll === PRIV, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), ...(extra || {}) });
+
+  // Save As: always creates a NEW script (shared with the team unless tagged Private) and makes it the current one
   async function doSaveAs(){
     if (!(await requireTeam())) return;
     const text = scriptBox?.value || '';
@@ -1065,17 +1125,17 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
     if (name === null) return;
     const trimmed = (name || '').trim();
     if (!trimmed) { alert('Please enter a valid name.'); return; }
+    const coll = wantColl();
     try{
-      const ref = await addDoc(collection(db, COLL), {
-        name: trimmed, text, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
-      });
-      currentDocId = ref.id; currentName = trimmed;
-      setStatus?.(`Saved “${trimmed}” as a new script.`);
-      savedText = text; rememberMeta();
+      const ref = await addDoc(collection(db, coll), body(trimmed, text, coll));
+      currentDocId = ref.id; currentName = trimmed; currentColl = coll;
+      setStatus?.(`Saved “${trimmed}” as a new ${coll === PRIV ? 'private' : 'shared'} script.`);
+      savedText = text; rememberMeta(); renderTitle();
       try{ localStorage.setItem('tp_text', text); }catch{}
     }catch(err){ console.error(err); alert('Save As failed. See console for details.'); }
   }
 
+  // Save: updates the current script in place; if the Private tag changed it moves to the other area; with nothing loaded it saves a new one
   async function doSave(){
     if (!(await requireTeam())) return;
     const text = scriptBox?.value || '';
@@ -1083,33 +1143,33 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
     if (name === null) return;
     const trimmed = (name || '').trim();
     if (!trimmed) { alert('Please enter a valid name.'); return; }
-
+    const coll = wantColl();
     try{
-      let didUpdate = false;
+      let done = false;
       if (currentDocId){
         try{
-          const exists = await getDoc(doc(db, COLL, currentDocId));
-          if (exists.exists()){
-            await updateDoc(doc(db, COLL, currentDocId), {
-              name: trimmed, text, updatedAt: serverTimestamp()
-            });
-            didUpdate = true;
+          const cur = await getDoc(doc(db, currentColl, currentDocId));
+          if (cur.exists()){
+            if (coll === currentColl){
+              await updateDoc(doc(db, currentColl, currentDocId), { name: trimmed, text, updatedAt: serverTimestamp() });
+              currentName = trimmed; setStatus?.(`Updated “${trimmed}”.`);
+            } else {                                                            // visibility changed: move it
+              const old = cur.data();
+              const ref = await addDoc(collection(db, coll), body(trimmed, text, coll, { createdAt: old.createdAt || serverTimestamp() }));
+              await deleteDoc(doc(db, currentColl, currentDocId));
+              currentDocId = ref.id; currentColl = coll; currentName = trimmed;
+              setStatus?.(`“${trimmed}” is now ${coll === PRIV ? 'private (only you and the admin can open it)' : 'shared with the team'}.`);
+            }
+            done = true;
           }
-        }catch(e){
-          console.warn('Update path failed; will create new.', e);
-        }
+        }catch(e){ console.warn('Update path failed; will create new.', e); }
       }
-      if (!didUpdate){
-        const ref = await addDoc(collection(db, COLL), {
-          name: trimmed, text, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
-        });
-        currentDocId = ref.id; currentName = trimmed;
-        setStatus?.(`Saved “${trimmed}”.`);
-      } else {
-        currentName = trimmed;
-        setStatus?.(`Updated “${trimmed}”.`);
+      if (!done){
+        const ref = await addDoc(collection(db, coll), body(trimmed, text, coll));
+        currentDocId = ref.id; currentName = trimmed; currentColl = coll;
+        setStatus?.(`Saved “${trimmed}” (${coll === PRIV ? 'private' : 'shared with the team'}).`);
       }
-      savedText = text; rememberMeta();
+      savedText = text; rememberMeta(); syncPrivToggle();
       try{ localStorage.setItem('tp_text', text); }catch{}
     }catch(err){
       console.error(err);
@@ -1117,38 +1177,48 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
     }
   }
 
+  const lockIco = '<svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg>';
   async function showList(){
     if (!(await requireTeam())) return;
     dlg?.showModal();
     if (listEl) listEl.innerHTML = '<div class="muted">Loading…</div>';
     try{
-      const qRef = query(collection(db, COLL), orderBy('updatedAt','desc'));
-      const snap = await getDocs(qRef);
+      const shared = await getDocs(query(collection(db, COLL), orderBy('updatedAt','desc')));
+      let priv = null;
+      try{    // private area: everyone sees only their own; the admin sees all
+        priv = await getDocs(isAdmin ? query(collection(db, PRIV)) : query(collection(db, PRIV), where('owner', '==', (me.email || '').toLowerCase())));
+      }catch(e){ console.warn('Private scripts unavailable (update the Firestore rules?)', e); }
       if (!listEl) return;
-      if (snap.empty){
-        listEl.innerHTML = '<div class="muted">No saved scripts yet.</div>';
-        return;
-      }
+      const rows = [];
+      if (priv) priv.forEach(d=>rows.push({ id: d.id, coll: PRIV, d: d.data() }));
+      const ms = (d)=>d.updatedAt?.toDate ? d.updatedAt.toDate().getTime() : 0;
+      const privRows = rows.sort((a,b)=>ms(b.d)-ms(a.d));
+      const sharedRows = []; shared.forEach(d=>sharedRows.push({ id: d.id, coll: COLL, d: d.data() }));
       listEl.innerHTML = '';
-      snap.forEach(docSnap=>{
-        const d = docSnap.data();
-        const when = d.updatedAt?.toDate ? d.updatedAt.toDate().toLocaleString() : '';
-        const row = document.createElement('div');
-        row.className = 'saved-item';
-        row.innerHTML = `
-          <div>
-            <div class="saved-title">${esc(d.name || '(untitled)')}</div>
-            <div class="saved-meta">${when}</div>
-          </div>
-          <div class="saved-actions">
-            <button data-id="${docSnap.id}" class="load">Load</button>
-            <button data-id="${docSnap.id}" class="rename">Rename</button>
-            <button data-id="${docSnap.id}" class="duplicate">Duplicate</button>
-            <button data-id="${docSnap.id}" class="delete">Delete</button>
-          </div>
-        `;
-        listEl.appendChild(row);
-      });
+      const section = (title, items, empty)=>{
+        const h = document.createElement('div'); h.className = 'saved-sec'; h.innerHTML = title; listEl.appendChild(h);
+        if (!items.length){ const e = document.createElement('div'); e.className = 'muted'; e.style.margin = '4px 2px 10px'; e.textContent = empty; listEl.appendChild(e); }
+        items.forEach(({ id, coll, d })=>{
+          const when = d.updatedAt?.toDate ? d.updatedAt.toDate().toLocaleString() : '';
+          const mine = !d.owner || d.owner.toLowerCase() === (me.email || '').toLowerCase();
+          const row = document.createElement('div');
+          row.className = 'saved-item';
+          row.innerHTML = `
+            <div>
+              <div class="saved-title">${coll === PRIV ? lockIco + ' ' : ''}${esc(d.name || '(untitled)')}</div>
+              <div class="saved-meta">${when}${coll === PRIV && !mine ? ` · private to ${esc(d.owner || '')}` : ''}</div>
+            </div>
+            <div class="saved-actions">
+              <button data-id="${id}" data-coll="${coll}" class="load">Load</button>
+              <button data-id="${id}" data-coll="${coll}" class="rename">Rename</button>
+              <button data-id="${id}" data-coll="${coll}" class="duplicate">Duplicate</button>
+              <button data-id="${id}" data-coll="${coll}" class="delete">Delete</button>
+            </div>`;
+          listEl.appendChild(row);
+        });
+      };
+      section(`${lockIco} Private${isAdmin ? ' (all users — visible to you as admin)' : ' — only you'}`, privRows, 'No private scripts.');
+      section('Shared with the team', sharedRows, 'No shared scripts yet.');
     }catch(err){
       console.error(err);
       if (listEl) listEl.innerHTML = '<div class="muted">Failed to load list.</div>';
@@ -1163,8 +1233,8 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
     if (currentDocId){
       if (text === savedText) return true;
       try{
-        await updateDoc(doc(db, COLL, currentDocId), { text, updatedAt: serverTimestamp() });
-        savedText = text; rememberMeta();
+        await updateDoc(doc(db, currentColl, currentDocId), { text, updatedAt: serverTimestamp() });
+        savedText = text; rememberMeta(); renderTitle();
         setStatus?.(`Autosaved “${currentName}”.`);
         return true;
       }catch(err){
@@ -1177,9 +1247,10 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
     if (name === null) return confirm('Discard the unsaved script and load the other one instead?');
     const trimmed = (name || '').trim();
     if (!trimmed){ alert('Please enter a name to save the current script. Nothing was loaded.'); return false; }
+    const coll = wantColl();
     try{
-      const ref = await addDoc(collection(db, COLL), { name: trimmed, text, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-      currentDocId = ref.id; currentName = trimmed; savedText = text; rememberMeta();
+      const ref = await addDoc(collection(db, coll), body(trimmed, text, coll));
+      currentDocId = ref.id; currentName = trimmed; currentColl = coll; savedText = text; rememberMeta(); renderTitle();
       setStatus?.(`Saved “${trimmed}”.`);
       return true;
     }catch(err){
@@ -1192,18 +1263,19 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
   listEl?.addEventListener('click', async (e)=>{
     const id = e.target?.dataset?.id;
     if(!id) return;
+    const coll = e.target.dataset.coll === PRIV ? PRIV : COLL;
 
     if(e.target.classList.contains('load')){
       try{
         // Loading opens a DIFFERENT script: first keep what's in the editor (autosave to its script, or prompt to save)
         if (!(await persistBeforeSwitch())) return;
-        const ds = await getDoc(doc(db, COLL, id));
+        const ds = await getDoc(doc(db, coll, id));
         if (ds.exists()){
           const data = ds.data();
-          currentDocId = id; currentName = data.name || '';
+          currentDocId = id; currentColl = coll; currentName = data.name || '';
           window.teleprompter.loadText(data.text || '');
           savedText = scriptBox?.value || '';
-          rememberMeta();
+          rememberMeta(); syncPrivToggle();
           setStatus?.(`Loaded “${currentName || '(untitled)'}”.`);
           dlg?.close();
         } else { alert('That script no longer exists.'); showList(); }
@@ -1211,7 +1283,7 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
     }
 
     if(e.target.classList.contains('rename')){
-      const ds = await getDoc(doc(db, COLL, id));
+      const ds = await getDoc(doc(db, coll, id));
       if (!ds.exists()) return;
       const oldName = ds.data().name || '';
       const newName = prompt('Rename script to:', oldName);
@@ -1219,22 +1291,19 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
       const trimmed = (newName || '').trim();
       if (!trimmed) return alert('Please enter a valid name.');
       try{
-        await updateDoc(doc(db, COLL, id), { name: trimmed, updatedAt: serverTimestamp() });
-        if (currentDocId === id) { currentName = trimmed; rememberMeta(); }
+        await updateDoc(doc(db, coll, id), { name: trimmed, updatedAt: serverTimestamp() });
+        if (currentDocId === id && currentColl === coll) { currentName = trimmed; rememberMeta(); renderTitle(); }
         showList();
       }catch(err){ console.error(err); alert('Rename failed.'); }
     }
 
     if(e.target.classList.contains('duplicate')){
-      const ds = await getDoc(doc(db, COLL, id));
+      const ds = await getDoc(doc(db, coll, id));
       if (!ds.exists()) return;
       const d = ds.data();
       const dupName = `${d.name || 'Copy'} (copy)`;
       try{
-        await addDoc(collection(db, COLL), {
-          name: dupName, text: d.text || '',
-          createdAt: serverTimestamp(), updatedAt: serverTimestamp()
-        });
+        await addDoc(collection(db, coll), body(dupName, d.text || '', coll));      // a copy stays in the same area as the original
         setStatus?.(`Duplicated as “${dupName}”.`);
         showList();
       }catch(err){ console.error(err); alert('Duplicate failed.'); }
@@ -1243,8 +1312,8 @@ body.idle.fs .fs-fab, body.idle.fs .grip{opacity:0;pointer-events:none}
     if(e.target.classList.contains('delete')){
       if(!confirm('Delete this saved script?')) return;
       try{
-        await deleteDoc(doc(db, COLL, id));
-        if (currentDocId === id){ currentDocId = null; currentName = ''; savedText = ''; try{ localStorage.removeItem('tp_doc_meta'); }catch{} }
+        await deleteDoc(doc(db, coll, id));
+        if (currentDocId === id && currentColl === coll){ currentDocId = null; currentColl = COLL; currentName = ''; savedText = ''; try{ localStorage.removeItem('tp_doc_meta'); }catch{} syncPrivToggle(); }
         showList();
       }catch(err){ console.error(err); alert('Delete failed.'); }
     }
@@ -1274,8 +1343,17 @@ service cloud.firestore {
       allow list:  if isAdmin();
       allow write: if isAdmin();
     }
+    // Scripts shared with the whole team (the default when someone saves)
     match /publicScripts/{docId} {
       allow read, write: if isMember();
+    }
+
+    // Scripts tagged Private: only the person who saved them, and the admin
+    match /privateScripts/{docId} {
+      allow create:       if isMember() && request.resource.data.owner == mail();
+      allow update:       if isMember() && (isAdmin() || resource.data.owner == mail())
+                                        && request.resource.data.owner == resource.data.owner;
+      allow read, delete: if isMember() && (isAdmin() || resource.data.owner == mail());
     }
 
     // Live mobile sessions (controller <-> prompter screen). The prompter screen needs NO login:

@@ -68,7 +68,14 @@ const css = document.createElement('style');
 css.textContent = `
   #remoteChip{cursor:pointer;border:1px solid #333;border-radius:999px;padding:6px 11px;font-size:13px;background:#121212;white-space:nowrap;max-width:340px;overflow:hidden;text-overflow:ellipsis}
   #remoteChip.live{border-color:#2e7d32} #remoteChip.warn{border-color:#d32f2f}
-  #presenterDialog .pd-choice{padding:14px 16px;font-size:15px;text-align:left;width:100%}
+  #presenterDialog .pd-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media (max-width:560px){ #presenterDialog .pd-grid{grid-template-columns:1fr} }
+  #presenterDialog .pd-card{background:#161616;border:1px solid #333;border-radius:12px;padding:14px 16px;font-size:15px;display:flex;flex-direction:column;gap:10px}
+  #presenterDialog .pd-card .rowbtns{margin-top:auto}
+  #presenterDialog .pd-go{background:#2a2a2a;border:1px solid #444}
+  #presenterDialog .pd-end{background:#7a1f1f;border-color:#a33;flex:0 0 auto}
+  #presenterDialog .pd-run{font-size:13px}
+  #presenterDialog .pd-qrpanel{margin-top:12px;border-top:1px solid #222;padding-top:8px}
   #presenterDialog .code{font-size:38px;font-weight:800;letter-spacing:.12em;text-align:center;padding:4px 0}
   #presenterDialog .status{display:flex;align-items:center;gap:8px;justify-content:center;font-size:15px}
   #presenterDialog .dot{width:10px;height:10px;border-radius:50%;background:#777} #presenterDialog .dot.on{background:#43a047}
@@ -82,7 +89,7 @@ document.head.appendChild(css);
 const chip = document.createElement('span');
 chip.id = 'remoteChip'; chip.hidden = true; chip.title = 'Presenter window on a tablet or phone';
 document.querySelector('.tb-actions')?.prepend(chip);
-chip.addEventListener('click', ()=>choose());
+chip.addEventListener('click', ()=>{ choose(); if (sess.active){ showQR = true; renderDialog(); } });   // the status chip goes straight to the code/QR
 function renderChip(){
   if (!sess.active){ chip.hidden = true; return; }
   chip.hidden = false;
@@ -96,35 +103,43 @@ function qrSvg(text){
   try{ const q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 4, margin: 4, scalable: true, alt: 'QR code that opens the presenter window' }); }
   catch(e){ console.warn('QR failed', e); return ''; }
 }
+let showQR = false;
 function renderDialog(){
-  const body = $('pdBody');
-  if (!sess.active){
-    let last = 'local'; try{ last = localStorage.getItem('tp_pd_choice') || 'local'; }catch{}
-    body.innerHTML = `<p class="muted" style="margin:2px 0 12px;font-size:14px;line-height:1.5">Where will the presenter window be?</p>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        <button class="pd-choice" id="pdLocal"><b>${ico('monitor')} On this computer</b><br><span class="muted">Opens a window you can drag to a second monitor.</span></button>
-        <button class="pd-choice" id="pdRemote"><b>${ico('phone')} On a tablet or phone</b><br><span class="muted">Shows a QR code. Works over the internet — the devices don't need to be on the same network.</span></button>
-      </div>`;
-    $('pdLocal').onclick = ()=>{ try{ localStorage.setItem('tp_pd_choice', 'local'); }catch{} $('presenterDialog').close(); H.openLocal(); };
-    $('pdRemote').onclick = async ()=>{ try{ localStorage.setItem('tp_pd_choice', 'remote'); }catch{} if (await sess.start()){ pushAll(); renderDialog(); } };
-    $(last === 'remote' ? 'pdRemote' : 'pdLocal').focus();
-    return;
-  }
-  const link = sess.link(), ok = sess.displayConnected(), info = sess.dispInfo;
-  body.innerHTML = `<div class="code">${sess.fmt()}</div>
-    <div class="status"><span class="dot ${ok ? 'on' : ''}"></span>${ok ? 'Presenter window connected' : 'Waiting for the presenter window…'}</div>
-    ${ok && info ? `<div class="muted" style="text-align:center">${info.w}×${info.h}${info.fs ? ' · fullscreen' : ''}</div>` : ''}
-    <div class="qr">${qrSvg(link)}</div>
-    <p class="muted" style="text-align:center;line-height:1.5">Scan with the tablet or phone's camera to open the presenter window already joined — or open <b>${esc(sess.displayUrl())}</b> and enter the code.</p>
-    <input type="text" id="pdLink" readonly value="${esc(link)}">
-    <div class="rowbtns" style="margin-top:8px"><button id="pdCopy">Copy link</button><button id="pdLocal2">Also open on this computer</button><button id="pdEnd" style="background:#7a1f1f;border-color:#a33">End</button></div>`;
-  $('pdCopy').onclick = async ()=>{ try{ await navigator.clipboard.writeText(link); notify('Link copied.'); }catch{ $('pdLink').select(); document.execCommand && document.execCommand('copy'); } };
-  $('pdLocal2').onclick = ()=>{ $('presenterDialog').close(); H.openLocal(); };
-  $('pdEnd').onclick = async ()=>{ if (confirm('End the presenter window? The tablet or phone will disconnect.')){ await sess.end(); renderDialog(); } };
+  const body = $('pdBody'), active = sess.active, ok = sess.displayConnected(), info = sess.dispInfo;
+  // Two equal, separate choices; nothing is pre-selected and nothing is remembered.
+  body.innerHTML = `<p class="muted" style="margin:2px 0 12px;font-size:14px;line-height:1.5">Where will the presenter window be?</p>
+    <div class="pd-grid">
+      <div class="pd-card">
+        <b>${ico('monitor')} On this computer</b>
+        <span class="muted">Opens a window you can drag to a second monitor.</span>
+        <div class="rowbtns"><button id="pdLocal" class="pd-go">Open on this computer</button></div>
+      </div>
+      <div class="pd-card">
+        <b>${ico('phone')} On a tablet or phone</b>
+        <span class="muted">Shows a QR code. Works over the internet — the devices don't need to be on the same network.</span>
+        ${active ? `<div class="pd-run"><span class="cdot ${ok ? 'on' : ''}"></span>${sess.fmt()} · ${ok ? 'connected' : 'waiting for the tablet or phone'}${ok && info ? ` · ${info.w}×${info.h}` : ''}</div>
+          <div class="rowbtns"><button id="pdShowQR" class="pd-go">${showQR ? 'Hide' : 'Show'} QR code</button><button id="pdEnd" class="pd-end">End</button></div>`
+        : `<div class="rowbtns"><button id="pdRemote" class="pd-go">Start on a tablet or phone</button></div>`}
+      </div>
+    </div>
+    ${active && showQR ? (()=>{ const link = sess.link(); return `<div class="pd-qrpanel"><div class="code">${sess.fmt()}</div><div class="qr">${qrSvg(link)}</div>
+      <p class="muted" style="text-align:center;line-height:1.5">Scan with the tablet or phone's camera to open the presenter window already joined — or open <b>${esc(sess.displayUrl())}</b> and enter the code.</p>
+      <input type="text" id="pdLink" readonly value="${esc(link)}"><div class="rowbtns" style="margin-top:8px"><button id="pdCopy">Copy link</button></div></div>`; })() : ''}`;
+  $('pdLocal').onclick = ()=>{ $('presenterDialog').close(); H.openLocal(); };
+  if ($('pdRemote')) $('pdRemote').onclick = async ()=>{ if (await sess.start()){ pushAll(); showQR = true; renderDialog(); } };
+  if ($('pdShowQR')) $('pdShowQR').onclick = ()=>{ showQR = !showQR; renderDialog(); };
+  if ($('pdEnd')) $('pdEnd').onclick = async ()=>{ if (confirm('End the tablet or phone presenter window? It will disconnect.')){ await sess.end(); showQR = false; renderDialog(); } };
+  if ($('pdCopy')) $('pdCopy').onclick = async ()=>{ const link = sess.link(); try{ await navigator.clipboard.writeText(link); notify('Link copied.'); }catch{ $('pdLink').select(); document.execCommand && document.execCommand('copy'); } };
 }
 $('pdClose')?.addEventListener('click', ()=>$('presenterDialog').close());
 
-export function choose(){ renderDialog(); if (!$('presenterDialog').open) $('presenterDialog').showModal(); }
+// preview size = the connected presenter window's real screen
+H.remoteSize = ()=>{ const i = sess.dispInfo; return (sess.active && sess.displayConnected() && i && i.w > 100 && i.h > 100) ? { w: i.w, h: i.h } : null; };
+
+export function choose(){
+  const d = $('presenterDialog'); showQR = false; renderDialog();
+  if (!d.open){ d.setAttribute('tabindex', '-1'); d.showModal(); d.focus(); }   // focus the dialog itself so no choice looks pre-selected
+}
 export const session = sess;
 
 // ---------- reload / sign-out ----------

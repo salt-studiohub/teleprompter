@@ -33,13 +33,30 @@ const now = ()=>sess.clock.now();
 function setView(u){ viewer.scrollTop = Math.max(0, u) * scale; lastSet = viewer.scrollTop; }
 function relayout(){
   const u = positionAt(st, now());
+  content.classList.toggle('mirrorX', !!st.mirror);        // preview shows Mirror like the presenter window (Flip is not shown)
   guide.classList.toggle('hidden', !st.guideVisible);
   guide.classList.toggle('locked', !!st.guideLocked);
   const r = layout(viewer, st, 0); scale = r.scale; padTop = r.padTop;
   setView(u);
 }
 function renderText(){ buildParagraphs(st.text, content); relayout(); }
-window.addEventListener('resize', ()=>{ relayout(); });
+// The preview is a scaled copy of the presenter window's real screen: the connected tablet/phone's size, else a typical 1920x1080.
+function presenterSize(){
+  const i = sess.dispInfo;
+  return (sess.active && sess.displayConnected() && i && i.w > 100 && i.h > 100) ? { w: i.w, h: i.h } : { w: 1920, h: 1080 };
+}
+let pvSig = '';
+function fitPreview(){
+  const host = $('pvHost'); if (!host) return;
+  const s = presenterSize(), hw = host.clientWidth, hh = host.clientHeight; if (!hw || !hh) return;
+  stage.style.width = s.w + 'px'; stage.style.height = s.h + 'px';
+  const k = Math.min(hw / s.w, hh / s.h);
+  stage.style.transform = 'translate(-50%,-50%) scale(' + k + ')'; stage.style.setProperty('--k', k);
+  pvSig = s.w + 'x' + s.h + '@' + hw + 'x' + hh;
+  relayout();
+}
+window.addEventListener('resize', fitPreview);
+setInterval(()=>{ const s = presenterSize(), host = $('pvHost'); if (host && (s.w + 'x' + s.h + '@' + host.clientWidth + 'x' + host.clientHeight) !== pvSig) fitPreview(); }, 700);
 
 // ============ presenter window session (shared module; the presenter window follows this controller) ============
 const playbackFields = ()=>({ playing: st.playing, pos: st.pos, anchorMs: st.anchorMs, speed: st.speed });
@@ -129,7 +146,7 @@ function updateSettingsUI(){
   $('cGuide').checked = !!st.guideVisible; $('cLock').checked = !!st.guideLocked; $('cMirror').checked = !!st.mirror; $('cFlip').checked = !!st.flip;
   $('rGuide').disabled = !!st.guideLocked;
 }
-function setSetting(k, v){ st[k] = v; if (k === 'fontSize' || k === 'colWidth' || k === 'guideVisible' || k === 'guideLocked') relayout(); queue({ [k]: v }, 150); saveSettings(); updateSettingsUI(); }
+function setSetting(k, v){ st[k] = v; if (k === 'fontSize' || k === 'colWidth' || k === 'guideVisible' || k === 'guideLocked' || k === 'mirror') relayout(); queue({ [k]: v }, 150); saveSettings(); updateSettingsUI(); }
 $('rFont').addEventListener('input', (e)=>setSetting('fontSize', +e.target.value));
 $('rCol').addEventListener('input', (e)=>setSetting('colWidth', +e.target.value));
 $('rGuide').addEventListener('input', (e)=>setGuidePos(+e.target.value));
@@ -147,9 +164,19 @@ function applyText(text){            // replace the script (e.g. opened from the
   queue({ text: st.text.slice(0, MAX_TEXT), ...playbackFields() }, 0);
 }
 function charInfo(){ const n = box.value.length; $('charInfo').textContent = `${n.toLocaleString()} characters` + (n > MAX_TEXT ? ' — too long to sync to the presenter window' : ''); }
-function curName(){ const n = cloud.currentLabel(); $('curName').textContent = n ? `Saved script: ${n}` : 'Not saved yet'; $('libCur').textContent = n ? `Current: ${n}` : 'The current script is not saved yet'; }
+// Prominent script title (+ Shared/Private badge, unsaved marker) and the Private switch
+function curName(){
+  const has = !!cloud.currentDocId, text = box.value, priv = cloud.currentPrivate();
+  const n = $('stName'); n.textContent = has ? cloud.currentLabel() : 'Untitled script'; n.classList.toggle('untitled', !has);
+  const bd = $('stBadge'); bd.hidden = !has && !text.trim(); bd.className = 'st-badge' + (priv ? ' priv' : '');
+  bd.innerHTML = priv ? ico('lock') + ' Private' : 'Shared with team';
+  $('stUnsaved').hidden = !(text !== cloud.savedText && (has || text.trim().length > 0));
+  $('cPrivate').checked = !!cloud.wantPrivate;      // the switch = how the next Save will tag it; the badge shows how it is saved now
+  $('curName').textContent = has ? `Saved script: ${cloud.currentLabel()} — ${priv ? 'private (only you and the admin)' : 'shared with the team'}` : 'Not saved yet — saves are shared with the team unless you switch on Private';
+  $('libCur').textContent = has ? `Current: ${cloud.currentLabel()}` : 'The current script is not saved yet';
+}
 box.addEventListener('input', ()=>{
-  st.text = box.value; renderText(); charInfo();
+  st.text = box.value; renderText(); charInfo(); curName();
   try{ localStorage.setItem('tp_text', st.text); }catch{}
   queue({ text: st.text.slice(0, MAX_TEXT) }, 400);
 });
@@ -161,6 +188,11 @@ const cloud = createCloud({
   changed: ()=>{ updateGate(); curName(); }
 });
 
+$('cPrivate').addEventListener('change', (e)=>{
+  cloud.setPrivate(e.target.checked);
+  if (cloud.currentDocId && cloud.currentPrivate() !== (cloud.currentColl === 'privateScripts')) notify(`Tap Save to make “${cloud.currentLabel()}” ${e.target.checked ? 'private' : 'shared with the team'}.`);
+});
+$('titleBar').addEventListener('click', ()=>openSheet('script'));
 $('btnSave').addEventListener('click', ()=>cloud.save());
 $('btnSaveAs').addEventListener('click', ()=>cloud.saveAs());
 $('libSave').addEventListener('click', ()=>cloud.save());
@@ -173,23 +205,30 @@ async function renderLibrary(){
   if (!(cloud.me && cloud.isMember)){ el.innerHTML = '<div class="muted">Sign in to see the library.</div>'; return; }
   el.innerHTML = '<div class="muted">Loading…</div>';
   try{
-    const rows = await cloud.list();
-    el.innerHTML = rows.length ? '' : '<div class="muted">No saved scripts yet.</div>';
-    rows.forEach((r)=>{
-      const d = document.createElement('div'); d.className = 'item';
-      d.innerHTML = `<div><div class="t">${esc(r.name)}</div><div class="muted">${esc(r.when)}</div></div>
-        <div class="rowbtns"><button class="primary" data-a="open" data-id="${esc(r.id)}">Open</button><button data-a="rename" data-id="${esc(r.id)}">Rename</button><button data-a="dup" data-id="${esc(r.id)}">Duplicate</button><button data-a="del" data-id="${esc(r.id)}">Delete</button></div>`;
-      el.appendChild(d);
-    });
+    const { priv, shared } = await cloud.list();
+    el.innerHTML = '';
+    const section = (title, rows, empty)=>{
+      const h = document.createElement('div'); h.className = 'sec'; h.innerHTML = title; el.appendChild(h);
+      if (!rows.length){ const e = document.createElement('div'); e.className = 'muted'; e.textContent = empty; el.appendChild(e); }
+      rows.forEach((r)=>{
+        const mine = !r.owner || r.owner.toLowerCase() === ((cloud.me && cloud.me.email) || '').toLowerCase();
+        const d = document.createElement('div'); d.className = 'item';
+        d.innerHTML = `<div><div class="t">${r.coll === 'privateScripts' ? ico('lock') + ' ' : ''}${esc(r.name)}</div><div class="muted">${esc(r.when)}${r.coll === 'privateScripts' && !mine ? ' · private to ' + esc(r.owner) : ''}</div></div>
+          <div class="rowbtns"><button class="primary" data-a="open" data-id="${esc(r.id)}" data-coll="${r.coll}">Open</button><button data-a="rename" data-id="${esc(r.id)}" data-coll="${r.coll}">Rename</button><button data-a="dup" data-id="${esc(r.id)}" data-coll="${r.coll}">Duplicate</button><button data-a="del" data-id="${esc(r.id)}" data-coll="${r.coll}">Delete</button></div>`;
+        el.appendChild(d);
+      });
+    };
+    section(ico('lock') + ' Private' + (cloud.isAdmin ? ' (all users — visible to you as admin)' : ' — only you'), priv, 'No private scripts.');
+    section('Shared with the team', shared, 'No shared scripts yet.');
   }catch(e){ console.error(e); el.innerHTML = '<div class="muted">Could not load the library.</div>'; }
 }
 $('libList').addEventListener('click', async (e)=>{
-  const a = e.target.dataset && e.target.dataset.a, id = e.target.dataset && e.target.dataset.id; if (!a) return;
+  const a = e.target.dataset && e.target.dataset.a, id = e.target.dataset && e.target.dataset.id, coll = e.target.dataset && e.target.dataset.coll; if (!a) return;
   try{
-    if (a === 'open'){ if (await cloud.open(id)){ $('sheet-library').close(); } }
-    else if (a === 'rename'){ if (await cloud.rename(id)) renderLibrary(); }
-    else if (a === 'dup'){ if (await cloud.duplicate(id)){ notify('Duplicated.'); renderLibrary(); } }
-    else if (a === 'del'){ if (await cloud.remove(id)) renderLibrary(); }
+    if (a === 'open'){ if (await cloud.open(id, coll)){ $('sheet-library').close(); } }
+    else if (a === 'rename'){ if (await cloud.rename(id, coll)) renderLibrary(); }
+    else if (a === 'dup'){ if (await cloud.duplicate(id, coll)){ notify('Duplicated.'); renderLibrary(); } }
+    else if (a === 'del'){ if (await cloud.remove(id, coll)) renderLibrary(); }
   }catch(err){ console.error(err); alert('That did not work. See console for details.'); }
 });
 
@@ -299,7 +338,7 @@ document.addEventListener('keydown', (e)=>{
 
 // ============ start ============
 (async function init(){
-  box.value = st.text; renderText(); updatePlayUI(); updateSettingsUI(); charInfo(); curName();
+  box.value = st.text; fitPreview(); renderText(); updatePlayUI(); updateSettingsUI(); charInfo(); curName();
   $('gate').hidden = false; $('gateGo').hidden = true; $('gateMsg').textContent = 'Checking sign-in…';
   requestAnimationFrame(tick);
   await cloud.ready; updateGate();
